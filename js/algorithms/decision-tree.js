@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════
 // Decision Tree — enhanced with P/R/F1, confusion matrix, param explanations
+// + getTreeStructure() for node-link diagram rendering
 // ═══════════════════════════════════════════════════
 
 import { generateBlobs } from '../utils/math-helpers.js';
@@ -35,10 +36,16 @@ export function createDecisionTree() {
     return best;
   }
 
+  function classCounts(labels) {
+    const counts = {};
+    for (const l of labels) counts[l] = (counts[l] || 0) + 1;
+    return counts;
+  }
+
   function buildTree(indices, depth) {
     const labels = indices.map(i => data.labels[i]);
     if (depth >= maxDepth || indices.length < minSamples || giniImpurity(labels) === 0) {
-      return { leaf: true, prediction: majorityClass(labels), samples: indices.length };
+      return { leaf: true, prediction: majorityClass(labels), samples: indices.length, classDist: classCounts(labels) };
     }
     let bestFeature = 0, bestThreshold = 0.5, bestGini = Infinity;
     let bestLeftIdx = [], bestRightIdx = [];
@@ -58,10 +65,11 @@ export function createDecisionTree() {
       }
     }
     if (!bestLeftIdx.length || !bestRightIdx.length) {
-      return { leaf: true, prediction: majorityClass(labels), samples: indices.length };
+      return { leaf: true, prediction: majorityClass(labels), samples: indices.length, classDist: classCounts(labels) };
     }
     return {
       leaf: false, feature: bestFeature, threshold: bestThreshold, gini: bestGini, samples: indices.length,
+      classDist: classCounts(labels),
       left: buildTree(bestLeftIdx, depth + 1), right: buildTree(bestRightIdx, depth + 1),
     };
   }
@@ -135,6 +143,11 @@ export function createDecisionTree() {
   function treeDepth(node) {
     if (!node || node.leaf) return 0;
     return 1 + Math.max(treeDepth(node.left), treeDepth(node.right));
+  }
+
+  // T06: Expose tree structure for the tree-renderer diagram
+  function getTreeStructure() {
+    return tree;
   }
 
   function getParamExplanation(paramKey, value) {
@@ -236,7 +249,9 @@ export function createDecisionTree() {
     params,
     predict: (x, y) => predictPoint(x, y),
     step, reset, render, getExplanation, getMetrics, getConfusionMatrix, getParamExplanation,
+    getTreeStructure,
     get data() { return data; },
     get revealDepth() { return revealDepth; },
+    get converged() { return treeBuilt && revealDepth >= treeDepth(tree); },
   };
 }

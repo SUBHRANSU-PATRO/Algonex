@@ -1,0 +1,568 @@
+
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+.wrap{padding:16px 0;font-family:var(--font-sans)}
+h1{font-size:20px;font-weight:500;color:var(--color-text-primary);margin-bottom:3px}
+.sub{font-size:12px;color:var(--color-text-secondary);margin-bottom:16px}
+.tabs{display:flex;gap:5px;flex-wrap:wrap;margin-bottom:16px}
+.tab{padding:5px 12px;border-radius:16px;font-size:12px;font-weight:500;cursor:pointer;border:1px solid var(--color-border-tertiary);color:var(--color-text-secondary);background:var(--color-background-secondary);white-space:nowrap}
+.tab.on{background:var(--color-text-primary);color:var(--color-background-primary)}
+.panel{display:none}.panel.on{display:block}
+
+/* progress bar */
+.prog-wrap{background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:12px;padding:14px;margin-bottom:18px}
+.prog-label{display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:8px}
+.prog-track{height:10px;background:var(--color-border-tertiary);border-radius:5px;overflow:hidden}
+.prog-fill{height:100%;border-radius:5px;background:linear-gradient(90deg,#639922,#BA7517)}
+.prog-stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-top:12px}
+.ps{text-align:center;padding:8px;background:var(--color-background-primary);border-radius:8px}
+.ps-n{font-size:18px;font-weight:500;color:var(--color-text-primary)}
+.ps-l{font-size:10px;color:var(--color-text-secondary);margin-top:2px}
+
+/* task card */
+.phase{margin-bottom:22px}
+.phase-title{font-size:13px;font-weight:500;color:var(--color-text-secondary);text-transform:uppercase;letter-spacing:.6px;margin-bottom:10px;padding-bottom:5px;border-bottom:1px solid var(--color-border-tertiary)}
+.task{border:1px solid var(--color-border-tertiary);border-radius:10px;margin-bottom:8px;overflow:hidden}
+.task-head{display:flex;align-items:flex-start;gap:10px;padding:11px 13px;cursor:pointer;user-select:none}
+.task-head:hover{background:var(--color-background-secondary)}
+.chk{width:18px;height:18px;border:2px solid var(--color-border-secondary);border-radius:5px;flex-shrink:0;margin-top:1px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.chk.done{background:#639922;border-color:#639922}
+.chk.done::after{content:"✓";color:#fff;font-size:11px;font-weight:700}
+.task-title{font-size:13px;font-weight:500;color:var(--color-text-primary);flex:1;line-height:1.4}
+.task-meta{display:flex;gap:5px;align-items:center;flex-shrink:0}
+.badge{font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px;white-space:nowrap}
+.crit{background:#FCEBEB;color:#A32D2D}.major{background:#FAEEDA;color:#854F0B}.minor{background:#EAF3DE;color:#3B6D11}.info{background:#E6F1FB;color:#185FA5}
+.task-body{padding:0 13px 12px 41px;display:none}
+.task-body.open{display:block}
+.step{font-size:12px;color:var(--color-text-secondary);line-height:1.8;padding:6px 0;border-bottom:1px solid var(--color-border-tertiary)}
+.step:last-child{border-bottom:none}
+.step strong{color:var(--color-text-primary);font-weight:500}
+.step code{font-family:var(--font-mono);font-size:11px;background:var(--color-background-secondary);padding:1px 5px;border-radius:4px;color:var(--color-text-primary)}
+.file{font-family:var(--font-mono);font-size:10px;background:var(--color-background-secondary);border:1px solid var(--color-border-tertiary);border-radius:4px;padding:1px 6px;color:var(--color-text-secondary);margin-right:4px}
+.time{font-size:10px;color:var(--color-text-tertiary,var(--color-text-secondary))}
+
+@media(prefers-color-scheme:dark){
+  .crit{background:#501313;color:#F7C1C1}.major{background:#412402;color:#FAC775}.minor{background:#173404;color:#C0DD97}.info{background:#042C53;color:#85B7EB}
+  .prog-fill{background:linear-gradient(90deg,#3B6D11,#854F0B)}
+}
+</style>
+
+<div class="wrap">
+<h1>Algonex — Complete Task List</h1>
+<p class="sub">The remaining 60% to finish the project · ordered by priority · click any task to expand</p>
+
+<div class="tabs">
+  <div class="tab on" onclick="sw('all')">All Tasks</div>
+  <div class="tab" onclick="sw('p1')">🔴 P1 — Critical</div>
+  <div class="tab" onclick="sw('p2')">🟡 P2 — Major</div>
+  <div class="tab" onclick="sw('p3')">🟢 P3 — Polish</div>
+  <div class="tab" onclick="sw('repo')">🗂 Repo Cleanup</div>
+</div>
+
+<div class="prog-wrap">
+  <div class="prog-label"><span>Overall completion</span><span id="pct">40%</span></div>
+  <div class="prog-track"><div class="prog-fill" id="bar" style="width:40%"></div></div>
+  <div class="prog-stats">
+    <div class="ps"><div class="ps-n" id="cnt-done">0</div><div class="ps-l">Done</div></div>
+    <div class="ps"><div class="ps-n" id="cnt-left">24</div><div class="ps-l">Remaining</div></div>
+    <div class="ps"><div class="ps-n" id="cnt-crit">8</div><div class="ps-l">Critical</div></div>
+    <div class="ps"><div class="ps-n" id="cnt-pts">60%</div><div class="ps-l">To unlock</div></div>
+  </div>
+</div>
+
+<!-- ===== ALL TASKS ===== -->
+<div id="all" class="panel on">
+
+<div class="phase">
+<div class="phase-title">🔴 Phase 1 — Repository Hygiene (do first, takes 20 min)</div>
+
+<div class="task" data-p="repo">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T01 — Delete / clean walkthrough.md (AI evidence removal)</div>
+    <div class="task-meta"><span class="badge crit">URGENT</span><span class="time">~10 min</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> walkthrough.md contains <code>C:/Users/subhr/.gemini/antigravity/brain/...</code> file paths — proof this was Gemini-generated. It's public on GitHub. Any evaluator who opens it sees this.</div>
+    <div class="step"><strong>Action:</strong> Run <code>git rm walkthrough.md</code> then <code>git commit -m "remove build log"</code> and push. OR open the file and delete all lines starting with <code>![</code> that reference local paths.</div>
+  </div>
+</div>
+
+<div class="task" data-p="repo">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T02 — Remove dist/ from version control</div>
+    <div class="task-meta"><span class="badge crit">URGENT</span><span class="time">~5 min</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> dist/ is the compiled build. Committing it is bad practice and bloats the repo. Vercel builds from source automatically.</div>
+    <div class="step"><strong>Action:</strong> Add <code>dist/</code> to <code>.gitignore</code>. Then run <code>git rm -r --cached dist/</code> → <code>git commit -m "remove dist from tracking"</code> → push.</div>
+  </div>
+</div>
+
+<div class="task" data-p="repo">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T03 — Write a proper README.md</div>
+    <div class="task-meta"><span class="badge crit">URGENT</span><span class="time">~30 min</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> GitHub shows a blank repo description. Judges open README first. Currently there is none.</div>
+    <div class="step"><strong>Must include:</strong> Project title + one-line description · Live link · Screenshot (at least 1) · Features list · How to run locally (<code>npm install</code>, <code>npm run dev</code>) · Tech stack table · Team members · SDG mapping statement.</div>
+    <div class="step"><strong>File:</strong> <span class="file">README.md</span> at repo root. Add screenshots by taking them yourself and uploading to a <code>docs/screenshots/</code> folder in the repo, then referencing with <code>![alt](docs/screenshots/workspace.png)</code>.</div>
+  </div>
+</div>
+
+<div class="task" data-p="repo">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T04 — Start committing incrementally from now on</div>
+    <div class="task-meta"><span class="badge major">IMPORTANT</span><span class="time">ongoing</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> Only 2 commits exist for the entire project. Evaluators check git log. A healthy project has 20–50 commits showing progression.</div>
+    <div class="step"><strong>Action:</strong> From this point, commit after completing each task below. Use descriptive messages like <code>feat: add Decision Tree node-link diagram</code>, <code>fix: wire playground dataset to workspace</code>, <code>feat: add loss curve animation</code> etc.</div>
+  </div>
+</div>
+</div>
+
+<div class="phase">
+<div class="phase-title">🔴 Phase 2 — Critical Feature Gaps (PS requirements that are broken or missing)</div>
+
+<div class="task" data-p="p1">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T05 — Build a global state store (AppState) to connect all pages</div>
+    <div class="task-meta"><span class="badge crit">CRITICAL</span><span class="time">~2–3 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> Right now every page is a silo. A CSV uploaded in #playground has zero effect on #workspace. Preprocessing runs on no real data. Train-test split connects to nothing. The PS pipeline is completely broken because there's no shared state.</div>
+    <div class="step"><strong>Create:</strong> <span class="file">js/utils/app-state.js</span> — a simple JS module exporting a singleton object:</div>
+    <div class="step"><code>export const AppState = { dataset: null, splitRatio: 0.8, trainData: null, testData: null, activeAlgo: null, preprocessingDone: false };</code></div>
+    <div class="step"><strong>Wire it:</strong> In playground.js → on dataset load, write <code>AppState.dataset = parsedData</code>. In train-test-split.js → read AppState.dataset, write AppState.trainData / AppState.testData. In workspace.js → read AppState.trainData to train algorithms. In preprocessing.js → read/write AppState.dataset.</div>
+    <div class="step"><strong>Add to navbar:</strong> Show a status pill "Dataset: Iris · Split: 80/20" so users can see the active state at all times.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p1">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T06 — Rebuild Decision Tree as a node-link tree diagram (not just boundary plot)</div>
+    <div class="task-meta"><span class="badge crit">CRITICAL</span><span class="time">~4–5 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.5 specifically requires: "Tree construction, feature selection at nodes, Gini index / Information Gain, click a node → see decision rule." What currently exists is an axis-aligned decision boundary plot — completely different from a tree diagram.</div>
+    <div class="step"><strong>What to build:</strong> After the tree is trained, extract its structure (nodes, split feature, split value, Gini score, class distribution). Render this as a top-down SVG or Canvas node-link diagram — circles/rectangles connected by lines, with each node showing the split condition.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/algorithms/decision-tree.js</span> <strong>— add method:</strong> <code>getTreeStructure()</code> that returns a nested JS object: <code>{ feature, threshold, gini, samples, left: {...}, right: {...} }</code>.</div>
+    <div class="step"><strong>In workspace.js or a new</strong> <span class="file">js/components/tree-renderer.js</span><strong>:</strong> Write a function that takes the tree structure and renders it as a layered diagram on a second canvas (or an SVG overlay). Use breadth-first traversal to position nodes per depth level.</div>
+    <div class="step"><strong>Node click → popup:</strong> Add a click event on each rendered node that shows a small tooltip/panel with: "Split on feature X ≤ threshold, Gini = 0.32, Samples = 45, Left: 30 class A, Right: 15 class B."</div>
+    <div class="step"><strong>The boundary plot</strong> can remain as a secondary view (tab: "Boundary View" / "Tree View").</div>
+  </div>
+</div>
+
+<div class="task" data-p="p1">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T07 — Add KNN neighbour highlight animation</div>
+    <div class="task-meta"><span class="badge crit">CRITICAL</span><span class="time">~2 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.5 requires: "k nearest neighbours highlighted, classification result." The current implementation shows a decision boundary heatmap but doesn't show the actual neighbours of a query point.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/algorithms/knn.js</span><strong>:</strong> Add a method <code>getNeighboursOf(queryPoint)</code> that returns the k nearest data points with their distances.</div>
+    <div class="step"><strong>In canvas-renderer.js or knn.js render():</strong> When user clicks on the canvas, treat that click coordinate as the query point. Draw a pulsing circle at that point. Draw lines from the query point to each of its k nearest neighbours. Draw a ring around each neighbour. Show a small result label: "Predicted: Class A (3/5 votes)".</div>
+    <div class="step"><strong>Wire the k-slider</strong> so changing k immediately redraws the highlighted neighbours for the same query point.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p1">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T08 — Add Random Forest multi-tree + voting visualisation</div>
+    <div class="task-meta"><span class="badge crit">CRITICAL</span><span class="time">~3–4 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.5 requires "multiple decision trees, voting mechanism, final prediction." Currently RF likely just shows one decision boundary — same as a single tree.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/algorithms/random-forest.js</span><strong>:</strong> Expose <code>getTrees()</code> returning an array of 3–5 individual tree structures, and <code>getVotes(point)</code> returning each tree's prediction for a given point.</div>
+    <div class="step"><strong>New view:</strong> Add a "Forest View" tab in workspace when RF is selected. Show 3–5 mini tree diagrams side by side (simplified, 2–3 levels deep each). Below each mini-tree, show a vote badge: "Tree 1: Class A", "Tree 2: Class A", "Tree 3: Class B". Show a final "Majority Vote → Class A" panel at the bottom.</div>
+    <div class="step"><strong>On canvas:</strong> Keep the combined decision boundary plot (the ensemble result) as the main canvas. Add the multi-tree voting panel as an HTML overlay below or in the right panel.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p1">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T09 — Add animated loss/error curve for model training (Linear Regression + others)</div>
+    <div class="task-meta"><span class="badge crit">CRITICAL</span><span class="time">~2 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.6 requires: "training process, model fitting, training iterations, error reduction, parameter adjustments." Currently there's no animated loss curve — arguably the most important thing for students to see.</div>
+    <div class="step"><strong>Chart.js is already installed</strong> in package.json — use it. No new dependency needed.</div>
+    <div class="step"><strong>In workspace.js:</strong> Add a small Chart.js line chart below the main canvas (or in the right panel). On each call to <code>algo.step()</code>, push the current epoch's MSE/loss value into the chart's dataset and call <code>chart.update()</code>.</div>
+    <div class="step"><strong>For Linear Regression:</strong> Plot MSE vs epoch. As gradient descent runs, the curve should visually drop toward zero.</div>
+    <div class="step"><strong>For Decision Tree / KNN:</strong> Plot training accuracy vs number of iterations / tree depth.</div>
+    <div class="step"><strong>Add an epoch counter</strong> label: "Epoch: 42 / 200" that increments visibly as RUN is pressed.</div>
+    <div class="step"><strong>Add convergence detection:</strong> When <code>algo.converged</code> is true, show a "Converged ✓" badge and stop auto-stepping.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p1">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T10 — Add gradient descent line animation for Linear Regression</div>
+    <div class="task-meta"><span class="badge crit">CRITICAL</span><span class="time">~1.5 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.5 says for Linear Regression: "scatter plot, regression line, slope calculation, error reduction" and optionally "gradient descent animation."</div>
+    <div class="step"><strong>Currently:</strong> The line likely snaps to its final position. It should animate — visibly rotating/shifting on the canvas with each step() call until it converges on the best fit.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/algorithms/linear-regression.js</span><strong>:</strong> Make sure <code>step()</code> updates weights by ONE gradient step and <code>render()</code> draws the line at the current weights (not the final weights).</div>
+    <div class="step"><strong>Add residual lines:</strong> After each step, draw thin vertical dashed lines from each data point to the regression line — these show the error being minimised.</div>
+    <div class="step"><strong>Display current slope/intercept</strong> values in the right panel, updating each epoch: "w = 2.34, b = -0.12".</div>
+  </div>
+</div>
+
+<div class="task" data-p="p1">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T11 — Complete the Evaluation panel (Precision, Recall, F1, Confusion Matrix, Regression metrics)</div>
+    <div class="task-meta"><span class="badge crit">CRITICAL</span><span class="time">~2 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.7 requires for classification: Accuracy, Precision, Recall, F1 Score, Confusion Matrix. For regression: MSE, R² Score, Prediction vs Actual graph. These may partially exist but need to be verified and completed.</div>
+    <div class="step"><strong>In the metrics bar / right panel:</strong> Ensure all 4 classification metrics show separately and are labelled clearly — not just one number.</div>
+    <div class="step"><strong>Confusion Matrix:</strong> Make it colour-scaled — higher values = darker cell. Label rows "Actual" and columns "Predicted". Add class names as row/column headers (e.g. Setosa, Versicolor, Virginica for Iris).</div>
+    <div class="step"><strong>For Regression (Linear Regression on Housing dataset):</strong> Add a "Prediction vs Actual" scatter plot — x-axis = actual values, y-axis = predicted values, perfect prediction = diagonal line. Use Chart.js for this.</div>
+    <div class="step"><strong>Smart switching:</strong> If algo.getConfusionMatrix() returns null (regression), hide the confusion matrix panel and show the regression metrics panel instead. This should be conditional in workspace.js.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p1">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T12 — Complete Compare Mode — add training time, bar chart, 3+ algorithm support</div>
+    <div class="task-meta"><span class="badge crit">CRITICAL</span><span class="time">~3 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.8 requires: comparison table with Accuracy, Training Time, Prediction Time. Performance bar chart. Model complexity comparison. Current compare mode only shows dual canvas + basic metrics.</div>
+    <div class="step"><strong>Measure training time:</strong> In compare.js, wrap each algorithm's training call with <code>const t0 = performance.now(); algo.train(); const time = performance.now() - t0;</code>. Store and display as "Training: 12ms".</div>
+    <div class="step"><strong>Measure prediction time:</strong> Similarly wrap a single predict call and display as "Prediction: 0.3ms".</div>
+    <div class="step"><strong>Expand to 4 algorithms:</strong> Instead of only 2 selectors, allow up to 4 algorithms to be selected via checkboxes. Run all selected algorithms on the same dataset. Show results in a table: Algorithm | Accuracy | Precision | F1 | Train Time | Predict Time.</div>
+    <div class="step"><strong>Add a bar chart</strong> (Chart.js) below the table comparing accuracy across all selected algorithms visually.</div>
+    <div class="step"><strong>Add model complexity note</strong> per algorithm in the table: e.g. "O(n²) predict" for KNN, "O(n log n) train" for DT — these can be hardcoded constants from the algorithm registry.</div>
+  </div>
+</div>
+</div>
+
+<div class="phase">
+<div class="phase-title">🟡 Phase 3 — Major Gaps (PS pipeline integration + dataset flow)</div>
+
+<div class="task" data-p="p2">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T13 — Wire Dataset Playground → Workspace (make CSV upload actually usable)</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~2 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.1 requires CSV upload to work end-to-end. Currently the playground page parses CSVs but the data never reaches the workspace algorithms.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/pages/playground.js</span><strong>:</strong> After CSV is parsed and displayed, show a "Use this Dataset →" button. On click, write the parsed data to AppState.dataset and navigate: <code>window.location.hash = '#workspace/decision-tree'</code>.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/pages/workspace.js</span><strong>:</strong> On page load, check AppState.dataset. If it exists, use it as the algorithm's data source instead of the hardcoded synthetic data.</div>
+    <div class="step"><strong>Dataset stats panel:</strong> After loading a dataset (from playground or preloaded), show a summary card in workspace: n samples, n features, feature names, class distribution bar chart.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p2">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T14 — Integrate Train-Test Split into the main workspace flow</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~2 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.3 requires a visual train-test split as part of the ML pipeline. Currently it's a dead-end separate page nobody navigates to.</div>
+    <div class="step"><strong>Option A (quickest):</strong> Add a "Split" step in the workspace sidebar. Add a ratio slider (70/30, 80/20, 90/10). Below the slider, show a mini scatter plot recolored by train (blue) vs test (orange) points. When the user clicks "Apply Split", write to AppState and retrain.</div>
+    <div class="step"><strong>Option B (full PS compliance):</strong> Make #train-test-split a mandatory step between playground and workspace. Add a "Next →" button on the split page that navigates to workspace with the split stored in AppState.</div>
+    <div class="step"><strong>Colour coding:</strong> On the main workspace canvas, optionally toggle "Show test points" — test set points rendered with a different marker shape (hollow circle vs filled) so students see which points the model was NOT trained on.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p2">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T15 — Make Preprocessing page functional with real visualisations</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~3 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.2 requires: handling missing values, feature scaling, normalisation, train-test split — each with before/after visualisations. The page exists but its actual implementation is unknown and likely basic.</div>
+    <div class="step"><strong>Missing value handling:</strong> Show a heatmap of the dataset where missing cells are highlighted in red. Add buttons: "Drop rows", "Fill with mean", "Fill with median". Redraw heatmap after each action.</div>
+    <div class="step"><strong>Feature scaling visualisation:</strong> Show two histograms side-by-side (before/after) for a selected feature. Add radio buttons: None / StandardScaler / MinMaxScaler / RobustScaler. Replot on change.</div>
+    <div class="step"><strong>Normalisation:</strong> Show a 2D scatter before and after normalisation. Points should visibly shift to be centered around origin.</div>
+    <div class="step"><strong>Apply to AppState:</strong> Add an "Apply Preprocessing" button that writes the transformed data back to AppState.dataset so workspace uses it.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p2">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T16 — Add Dataset Stats display panel (PS 5.1 requirement)</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~1 hr</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.1 says: "Displayed information: number of samples, number of features, feature names, class distribution." This info should appear after a dataset is selected/uploaded.</div>
+    <div class="step"><strong>Where:</strong> Add a collapsible "Dataset Info" card in the workspace left panel (or in playground after load).</div>
+    <div class="step"><strong>Contents:</strong> Samples: 150 · Features: 4 · Feature names: sepal_length, sepal_width, petal_length, petal_width · Class distribution: a small horizontal bar chart showing class counts (Setosa: 50, Versicolor: 50, Virginica: 50).</div>
+    <div class="step"><strong>Implementation:</strong> Read from AppState.dataset. Use simple Canvas or an HTML bar to draw class distribution. This is ~50 lines of JS.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p2">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T17 — Add step-by-step playback controls (Play / Pause / Step / Reset) to all algorithms</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~1.5 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.5 says "step-by-step visual explanation." The STEP button may exist but there's no PLAY (auto-step with delay) or speed control, which makes the educational experience passive.</div>
+    <div class="step"><strong>RUN button:</strong> Should start a <code>setInterval</code> calling <code>algo.step()</code> every N milliseconds, updating canvas and loss chart each time. Stop when converged.</div>
+    <div class="step"><strong>PAUSE button:</strong> Clears the interval, pauses at current state.</div>
+    <div class="step"><strong>STEP button:</strong> Calls <code>algo.step()</code> exactly once, updates canvas.</div>
+    <div class="step"><strong>RESET button:</strong> Calls <code>algo.reset()</code>, clears loss chart data, resets epoch counter.</div>
+    <div class="step"><strong>Speed slider:</strong> A slider from 1x to 10x that changes the interval delay (500ms → 50ms). Add label "Speed: 1x".</div>
+    <div class="step"><strong>In</strong> <span class="file">js/pages/workspace.js</span> — these controls likely already exist but verify they're wired correctly to the algo API and the loss chart updates on each step.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p2">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T18 — Add synthetic 2D dataset option (PS 5.1 requirement)</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~1 hr</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.1 lists "Synthetic 2D dataset (for visualization)" as a required predefined dataset. It's absent — there's Iris, Housing, Titanic but no user-drawable or generated 2D set.</div>
+    <div class="step"><strong>Option A — Generative:</strong> Add a "Generate 2D Data" button that creates random blobs/clusters in 2D using a simple Gaussian generator. Add controls: number of classes (2–4), points per class, cluster spread.</div>
+    <div class="step"><strong>Option B — Drawable:</strong> In the workspace canvas, when "Draw Mode" is on, let users click to place points and assign class labels. Algorithm trains on what the user drew — very educational.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/utils/datasets.js</span><strong>:</strong> Add a <code>generateBlobs(n, classes, spread)</code> function returning a synthetic dataset in the same format as the real datasets.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p2">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T19 — Replace Titanic with Diabetes dataset (PS compliance)</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~30 min</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Why:</strong> PS Section 5.1 specifies: Iris, Housing, Diabetes, Synthetic 2D. Algonex has Iris, Housing, Titanic. Titanic is a mismatch.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/utils/datasets.js</span><strong>:</strong> Add the Pima Indians Diabetes dataset (768 samples, 8 features, binary classification). It's a standard dataset — the raw data can be hardcoded as a JS array (it's small enough).</div>
+    <div class="step">Keep Titanic as an additional dataset — just make sure Diabetes is present since it's explicitly named in the PS.</div>
+  </div>
+</div>
+</div>
+
+<div class="phase">
+<div class="phase-title">🟢 Phase 4 — Polish, UX & Bug Fixes</div>
+
+<div class="task" data-p="p3">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T20 — Fix mobile layout (sidebar overflow on &lt;768px screens)</div>
+    <div class="task-meta"><span class="badge minor">POLISH</span><span class="time">~1.5 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>In</strong> <span class="file">css/index.css</span><strong>:</strong> Add a media query at 768px that collapses the sidebar into a bottom drawer or a hamburger-triggered slide-in panel.</div>
+    <div class="step"><strong>Workspace 3-panel layout:</strong> On mobile, stack panels vertically: controls on top, canvas in middle, metrics at bottom. The canvas should resize to 100% viewport width.</div>
+    <div class="step"><strong>Canvas resize:</strong> Make sure CanvasRenderer listens to <code>window.resize</code> and redraws at new dimensions.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p3">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T21 — Add loading spinner / async feedback for compute-heavy steps</div>
+    <div class="task-meta"><span class="badge minor">POLISH</span><span class="time">~30 min</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Problem:</strong> Heavy operations (decision boundary pixel-by-pixel render, tree construction) can freeze the UI for 1–3 seconds with no indication.</div>
+    <div class="step"><strong>Fix:</strong> Before heavy compute, show a spinner overlay on the canvas: "Training..." or "Rendering boundary...". After done, hide it.</div>
+    <div class="step"><strong>Better fix:</strong> Move heavy work into <code>setTimeout(fn, 0)</code> or a Web Worker so the UI doesn't freeze at all.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p3">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T22 — Add CSV upload error handling (invalid file, wrong format)</div>
+    <div class="task-meta"><span class="badge minor">POLISH</span><span class="time">~45 min</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>In</strong> <span class="file">js/utils/csv-parser.js</span> and <span class="file">js/pages/playground.js</span><strong>:</strong></div>
+    <div class="step">Validate: file extension must be .csv · file size must be under 10MB · must have at least 2 columns and 10 rows · at least one numeric column must exist.</div>
+    <div class="step">On failure, show a red error toast: "Upload failed: file must be a CSV with numeric columns." On success, show a green toast: "Loaded 150 rows × 5 columns."</div>
+    <div class="step">Also handle the case where a non-CSV (PDF, image etc) is drag-dropped — currently silently crashes.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p3">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T23 — Fix algorithm state reset when switching algorithms</div>
+    <div class="task-meta"><span class="badge minor">POLISH</span><span class="time">~30 min</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Problem:</strong> Switching from KNN to Decision Tree mid-session leaves stale canvas artefacts from the previous algorithm visible.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/pages/workspace.js</span><strong>:</strong> On algorithm switch, call <code>renderer.clear()</code> to blank the canvas, reset the loss chart to empty, reset the epoch counter to 0, and call <code>newAlgo.reset()</code>.</div>
+    <div class="step">Also reset the right-panel explanation text to the new algorithm's <code>getExplanation()</code> initial state.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p3">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T24 — Fix #explorer hash route scroll reliability</div>
+    <div class="task-meta"><span class="badge minor">POLISH</span><span class="time">~20 min</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Problem:</strong> Navigating directly to https://algonex-xi.vercel.app/#explorer sometimes doesn't scroll/render the explorer section because the router fires before the DOM is ready.</div>
+    <div class="step"><strong>In</strong> <span class="file">js/router.js</span><strong>:</strong> Ensure the initial route is handled inside a <code>DOMContentLoaded</code> listener, not at module eval time. Or add a small delay: <code>setTimeout(() => router.handle(location.hash), 50)</code>.</div>
+  </div>
+</div>
+</div>
+
+<div class="phase">
+<div class="phase-title">📋 Phase 5 — Report Writing (non-code tasks)</div>
+
+<div class="task" data-p="p3">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T25 — Fill Section 7 (Testing Table) with 8 real test cases</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~1 hr</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step">TC1: Load Iris dataset → Expected: 150 rows, 4 features shown in Dataset Info panel.</div>
+    <div class="step">TC2: Run KNN with k=3 on Iris → Expected: Accuracy > 90%, confusion matrix renders with 3 classes.</div>
+    <div class="step">TC3: Run Linear Regression on Housing → Expected: MSE displayed, R² > 0, regression line animates across scatter.</div>
+    <div class="step">TC4: Upload a valid CSV → Expected: columns detected, preview table shown, "Use Dataset" button appears.</div>
+    <div class="step">TC5: Upload an invalid file (PDF) → Expected: error toast "Invalid file format", no crash.</div>
+    <div class="step">TC6: Compare KNN vs Decision Tree → Expected: both canvases render simultaneously, metrics table shows both rows.</div>
+    <div class="step">TC7: Change k-slider from 3 to 7 → Expected: decision boundary rerenders within 1 second.</div>
+    <div class="step">TC8: Switch from KNN to Random Forest → Expected: canvas clears, new algorithm initialises, epoch counter resets to 0.</div>
+  </div>
+</div>
+
+<div class="task" data-p="p3">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T26 — Take screenshots of every page and add to report Section 5.4</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~1 hr</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step">Screenshots needed: Landing page · Explorer grid · Workspace (Linear Regression with loss curve) · Workspace (Decision Tree with tree diagram) · Workspace (KNN with neighbour highlights) · Compare Mode (2 algos) · Dataset Playground · Preprocessing page · Train-Test Split page · Pipeline Simulator.</div>
+    <div class="step">Take these AFTER completing the code fixes above — don't screenshot broken states.</div>
+    <div class="step">Paste into the Word doc Section 5.4 with captions: "Figure 1: Algorithm workspace showing KNN decision boundary with k=5".</div>
+  </div>
+</div>
+
+<div class="task" data-p="p3">
+  <div class="task-head" onclick="tog(this)">
+    <div class="chk" onclick="chk(event,this)"></div>
+    <div class="task-title">T27 — Complete all remaining empty report sections</div>
+    <div class="task-meta"><span class="badge major">MAJOR</span><span class="time">~2 hrs</span></div>
+  </div>
+  <div class="task-body">
+    <div class="step"><strong>Section 3.3 SDG Mapping:</strong> Write "SDG 4 — Quality Education, Target 4.4: increase youth with relevant technical and vocational skills."</div>
+    <div class="step"><strong>Section 3.4 Functional Requirements:</strong> List the 8 modules from PS (Dataset Selection, Preprocessing, Split, Algorithm Selection, Visualisation, Training, Evaluation, Comparison). Non-functional: performance (render under 2s), usability (works without login), accessibility (keyboard nav).</div>
+    <div class="step"><strong>Section 4.1 System Overview:</strong> "Algonex is a client-side SPA with zero backend. All ML computations run in the browser using Vanilla JS algorithm engines. Data flows: user selects dataset → AppState stores it → preprocessing transforms it → train-test split partitions it → workspace algorithms train on trainData and evaluate on testData."</div>
+    <div class="step"><strong>Section 4.2 Architecture Diagram:</strong> Render the Mermaid diagram from architecture.md (paste into mermaid.live, export as PNG, insert in doc).</div>
+    <div class="step"><strong>Section 5.2 API Design:</strong> "No REST API (fully client-side). Internal algorithm API: each engine exports step(), reset(), render(), getMetrics(), getConfusionMatrix(), getExplanation()."</div>
+    <div class="step"><strong>Section 5.3 Database Design:</strong> "No database. Datasets stored as JS arrays in js/utils/datasets.js. User-uploaded CSV parsed in-browser and stored in AppState (session memory only)."</div>
+    <div class="step"><strong>Section 6 Security:</strong> Client-side input validation on CSV upload (extension check, size limit, column type verification). HTTPS via Vercel. No auth needed (public educational tool). No server = no SQL injection / server-side XSS risk.</div>
+    <div class="step"><strong>Section 8 AI Tools:</strong> Disclose Gemini AI used for initial scaffolding. Describe human contribution: debugging, integration, dataset wiring, educational content, testing, report.</div>
+    <div class="step"><strong>Section 13 Conclusion:</strong> Summarise what was built, what the key learning outcomes are, what limitations exist (no backend, 2D visualisation only), and future work (add SVM, add hyperparameter tuning, add AI chatbot explainer).</div>
+  </div>
+</div>
+
+</div>
+</div>
+
+<!-- P1 only -->
+<div id="p1" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">8 critical tasks — these directly correspond to PS requirements that are broken or missing. Do these first.</p>
+  <div id="p1-tasks"></div>
+</div>
+
+<!-- P2 only -->
+<div id="p2" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">Major gaps in pipeline integration and dataset flow — do these after P1.</p>
+  <div id="p2-tasks"></div>
+</div>
+
+<!-- P3 only -->
+<div id="p3" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">Polish, UX fixes, and report writing — do these last.</p>
+  <div id="p3-tasks"></div>
+</div>
+
+<!-- Repo -->
+<div id="repo" class="panel">
+  <p style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">These 4 repo hygiene tasks should be done TODAY, before any code changes.</p>
+  <div id="repo-tasks"></div>
+</div>
+
+</div>
+
+<script>
+function tog(head){
+  const body = head.nextElementSibling;
+  body.classList.toggle('open');
+}
+function chk(e, box){
+  e.stopPropagation();
+  box.classList.toggle('done');
+  updateProgress();
+}
+function updateProgress(){
+  const all = document.querySelectorAll('#all .chk');
+  const done = document.querySelectorAll('#all .chk.done').length;
+  const total = all.length;
+  const base = 40;
+  const each = 60 / total;
+  const pct = Math.round(base + done * each);
+  document.getElementById('pct').textContent = pct + '%';
+  document.getElementById('bar').style.width = pct + '%';
+  document.getElementById('cnt-done').textContent = done;
+  document.getElementById('cnt-left').textContent = total - done;
+  document.getElementById('cnt-pts').textContent = pct + '%';
+}
+function sw(id){
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('on'));
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('on'));
+  document.getElementById(id).classList.add('on');
+  event.target.classList.add('on');
+  // populate filter panels
+  if(id==='p1') populateFilter('p1-tasks','p1');
+  if(id==='p2') populateFilter('p2-tasks','p2');
+  if(id==='p3') populateFilter('p3-tasks','p3');
+  if(id==='repo') populateFilter('repo-tasks','repo');
+}
+function populateFilter(containerId, filterVal){
+  const container = document.getElementById(containerId);
+  if(container.children.length > 0) return;
+  const tasks = document.querySelectorAll('#all .task[data-p="'+filterVal+'"]');
+  tasks.forEach(t => {
+    const clone = t.cloneNode(true);
+    clone.querySelectorAll('.task-head').forEach(h=>h.addEventListener('click',()=>tog(h)));
+    clone.querySelectorAll('.chk').forEach(c=>c.addEventListener('click',(e)=>chk(e,c)));
+    container.appendChild(clone);
+  });
+}
+// set task data-p
+document.querySelectorAll('#all .task').forEach(t=>{
+  if(!t.dataset.p){
+    const badge = t.querySelector('.badge');
+    if(badge){
+      const cls = badge.className;
+      if(cls.includes('crit')) t.dataset.p='p1';
+      else if(cls.includes('major')) t.dataset.p='p2';
+      else t.dataset.p='p3';
+    }
+  }
+});
+</script>

@@ -10,7 +10,12 @@ export class Router {
     this.currentCleanup = null;
 
     window.addEventListener('hashchange', () => this.resolve());
-    window.addEventListener('load', () => this.resolve());
+    // T24: Ensure initial route fires after DOM is fully ready
+    if (document.readyState === 'complete') {
+      setTimeout(() => this.resolve(), 50);
+    } else {
+      window.addEventListener('load', () => setTimeout(() => this.resolve(), 50));
+    }
   }
 
   resolve() {

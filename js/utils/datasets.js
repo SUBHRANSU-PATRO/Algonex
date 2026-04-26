@@ -30,6 +30,24 @@ export const PRELOADED_DATASETS = [
     icon: 'sailing',
     color: 'var(--tertiary)',
   },
+  {
+    id: 'diabetes',
+    name: 'Diabetes',
+    description: 'Pima Indians binary classification — predict diabetes onset from health indicators.',
+    rows: 768,
+    features: 8,
+    icon: 'medical_information',
+    color: 'var(--error)',
+  },
+  {
+    id: 'synthetic',
+    name: 'Synthetic 2D',
+    description: 'Configurable blob clusters for visualization. Choose classes, points, and spread.',
+    rows: '~100',
+    features: 2,
+    icon: 'scatter_plot',
+    color: 'var(--success)',
+  },
 ];
 
 // Simplified iris subset (sepal length, sepal width) for 2D visualization
@@ -104,3 +122,39 @@ export function getTitanicData() {
   }
   return { points, labels, classNames: ['Died', 'Survived'] };
 }
+
+export function getDiabetesData() {
+  // Simplified 2D Pima Indians: glucose vs BMI, label = diabetic
+  const points = [];
+  const labels = [];
+  for (let i = 0; i < 120; i++) {
+    const glucose = 0.1 + Math.random() * 0.8;
+    const bmi = 0.1 + Math.random() * 0.8;
+    const diabetic = (glucose > 0.55 && bmi > 0.45) || (glucose > 0.7 && bmi > 0.3) ? 1 : 0;
+    const noise = (Math.random() - 0.5) * 0.1;
+    points.push([glucose + noise * 0.5, bmi + noise * 0.5]);
+    labels.push(diabetic);
+  }
+  return { points, labels, classNames: ['Healthy', 'Diabetic'] };
+}
+
+export function getSyntheticData(nClasses = 3, pointsPerClass = 30, spread = 0.1) {
+  // Generate configurable 2D blob clusters
+  const centers = [];
+  for (let c = 0; c < nClasses; c++) {
+    centers.push([0.15 + Math.random() * 0.7, 0.15 + Math.random() * 0.7]);
+  }
+  const points = [];
+  const labels = [];
+  for (let c = 0; c < nClasses; c++) {
+    for (let i = 0; i < pointsPerClass; i++) {
+      const x = centers[c][0] + (Math.random() - 0.5) * spread * 2;
+      const y = centers[c][1] + (Math.random() - 0.5) * spread * 2;
+      points.push([Math.max(0.02, Math.min(0.98, x)), Math.max(0.02, Math.min(0.98, y))]);
+      labels.push(c);
+    }
+  }
+  const classNames = Array.from({ length: nClasses }, (_, i) => `Class ${i}`);
+  return { points, labels, classNames };
+}
+

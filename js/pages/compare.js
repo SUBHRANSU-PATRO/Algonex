@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════
-// Compare Algorithms Mode
+// Compare Algorithms Mode — enhanced with training time,
+// bar chart, 4-algorithm support, model complexity (T12)
 // ═══════════════════════════════════════════════════
 
 import { ALGORITHMS } from '../algorithms/registry.js';
@@ -22,10 +23,26 @@ const ALGO_FACTORIES = {
   'svm': createSVM,
 };
 
+const COMPLEXITY = {
+  'linear-regression': { train: 'O(n·epochs)', predict: 'O(1)', note: 'Fast training & prediction' },
+  'knn': { train: 'O(1)', predict: 'O(n·k)', note: 'Lazy learner — no training, slow prediction' },
+  'decision-tree': { train: 'O(n·m·log n)', predict: 'O(log n)', note: 'Fast once built' },
+  'random-forest': { train: 'O(t·n·m·log n)', predict: 'O(t·log n)', note: 'Ensemble of trees' },
+  'kmeans': { train: 'O(n·k·iters)', predict: 'O(k)', note: 'Iterative centroid updates' },
+  'neural-network': { train: 'O(n·h²·epochs)', predict: 'O(h²)', note: 'Scales with hidden size' },
+  'svm': { train: 'O(n²)', predict: 'O(sv)', note: 'Depends on support vectors' },
+};
+
 export function renderCompare(container) {
   container.classList.add('page-content');
 
-  const selectOptions = ALGORITHMS.map(a => `<option value="${a.id}">${a.name}</option>`).join('');
+  // Checkbox options for multi-select
+  const algoCheckboxes = ALGORITHMS.map(a => `
+    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;padding:6px 10px;border-radius:8px;background:rgba(164,230,255,0.04);border:1px solid rgba(164,230,255,0.08)">
+      <input type="checkbox" class="algo-check" value="${a.id}" style="accent-color:var(--primary)">
+      <span class="text-body-sm">${a.name}</span>
+    </label>
+  `).join('');
 
   container.innerHTML = `
     <div class="aura aura-primary" style="top:50%;left:-200px"></div>
@@ -36,120 +53,174 @@ export function renderCompare(container) {
         <div>
           <div class="chip chip-secondary mb-md">Compare Mode</div>
           <h1 class="text-headline-lg">Compare Algorithms Side-by-Side</h1>
-          <p class="text-body-md text-muted mt-sm">Run two algorithms on the same data and compare behavior, speed, and accuracy.</p>
+          <p class="text-body-md text-muted mt-sm">Select up to 4 algorithms, run them on the same data, and compare accuracy, speed, and complexity.</p>
         </div>
         <button class="btn btn-primary" id="compare-run-btn">
           <span class="material-symbols-outlined" style="font-size:18px">play_arrow</span>
-          Run Both
+          Run All
         </button>
       </div>
 
-      <div class="compare-grid" style="height:calc(100vh - 280px)">
-        <!-- Left Panel -->
+      <!-- Algorithm Selection -->
+      <div class="card" style="padding:var(--space-lg);margin-bottom:var(--space-xl)">
+        <div class="text-label-sm text-dim mb-md">SELECT ALGORITHMS (up to 4)</div>
+        <div style="display:flex;flex-wrap:wrap;gap:var(--space-sm)" id="algo-checkboxes">
+          ${algoCheckboxes}
+        </div>
+      </div>
+
+      <!-- Canvas Grid -->
+      <div id="canvas-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);margin-bottom:var(--space-xl)">
         <div class="compare-panel">
           <div class="compare-panel-header">
-            <select class="select-field" id="algo-select-left" style="max-width:200px">
-              ${selectOptions}
-            </select>
-            <span class="chip chip-primary" id="status-left">READY</span>
+            <span class="text-label-md" id="canvas-label-0">—</span>
+            <span class="chip chip-primary" id="status-0">READY</span>
           </div>
           <div class="compare-panel-canvas">
-            <div class="vis-canvas-wrap h-full" id="canvas-wrap-left" style="min-height:300px">
-              <canvas id="canvas-left"></canvas>
-            </div>
+            <div class="vis-canvas-wrap h-full" style="min-height:280px"><canvas id="canvas-0"></canvas></div>
           </div>
         </div>
-
-        <!-- Right Panel -->
         <div class="compare-panel">
           <div class="compare-panel-header">
-            <select class="select-field" id="algo-select-right" style="max-width:200px">
-              ${selectOptions}
-            </select>
-            <span class="chip chip-secondary" id="status-right">READY</span>
+            <span class="text-label-md" id="canvas-label-1">—</span>
+            <span class="chip chip-secondary" id="status-1">READY</span>
           </div>
           <div class="compare-panel-canvas">
-            <div class="vis-canvas-wrap h-full" id="canvas-wrap-right" style="min-height:300px">
-              <canvas id="canvas-right"></canvas>
-            </div>
+            <div class="vis-canvas-wrap h-full" style="min-height:280px"><canvas id="canvas-1"></canvas></div>
+          </div>
+        </div>
+        <div class="compare-panel">
+          <div class="compare-panel-header">
+            <span class="text-label-md" id="canvas-label-2">—</span>
+            <span class="chip chip-primary" id="status-2">READY</span>
+          </div>
+          <div class="compare-panel-canvas">
+            <div class="vis-canvas-wrap h-full" style="min-height:280px"><canvas id="canvas-2"></canvas></div>
+          </div>
+        </div>
+        <div class="compare-panel">
+          <div class="compare-panel-header">
+            <span class="text-label-md" id="canvas-label-3">—</span>
+            <span class="chip chip-secondary" id="status-3">READY</span>
+          </div>
+          <div class="compare-panel-canvas">
+            <div class="vis-canvas-wrap h-full" style="min-height:280px"><canvas id="canvas-3"></canvas></div>
           </div>
         </div>
       </div>
 
       <!-- Metrics Comparison Table -->
-      <div class="card" style="margin-top:var(--space-xl);padding:var(--space-lg)">
+      <div class="card" style="padding:var(--space-lg);margin-bottom:var(--space-xl)">
         <h3 class="text-headline-sm mb-md">Metrics Comparison</h3>
-        <table class="metrics-table" id="compare-metrics">
-          <thead>
-            <tr><th>Metric</th><th id="th-left">Algorithm A</th><th id="th-right">Algorithm B</th></tr>
-          </thead>
-          <tbody id="compare-tbody">
-            <tr><td colspan="3" class="text-muted text-center" style="padding:var(--space-xl)">Select algorithms and press Run Both to compare</td></tr>
-          </tbody>
-        </table>
+        <div style="overflow-x:auto">
+          <table class="metrics-table" id="compare-metrics">
+            <thead><tr id="compare-thead"><th>Metric</th></tr></thead>
+            <tbody id="compare-tbody">
+              <tr><td colspan="5" class="text-muted text-center" style="padding:var(--space-xl)">Select algorithms and press Run All to compare</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Accuracy Bar Chart -->
+      <div class="card" style="padding:var(--space-lg)">
+        <h3 class="text-headline-sm mb-md">Accuracy Comparison</h3>
+        <div id="accuracy-chart" style="min-height:200px"></div>
       </div>
     </div>
   `;
 
-  // Set defaults
-  const selectLeft = document.getElementById('algo-select-left');
-  const selectRight = document.getElementById('algo-select-right');
-  selectLeft.value = 'knn';
-  selectRight.value = 'decision-tree';
+  // Set defaults: KNN and Decision Tree checked
+  setTimeout(() => {
+    const checks = document.querySelectorAll('.algo-check');
+    checks.forEach(c => {
+      if (c.value === 'knn' || c.value === 'decision-tree') c.checked = true;
+    });
+    // Limit to 4
+    document.getElementById('algo-checkboxes').addEventListener('change', () => {
+      const checked = document.querySelectorAll('.algo-check:checked');
+      if (checked.length > 4) {
+        checks.forEach(c => { if (!Array.from(checked).slice(0, 4).includes(c)) c.checked = false; });
+      }
+    });
+  }, 50);
 
-  let rendererL = null, rendererR = null;
-  let algoL = null, algoR = null;
+  let renderers = [null, null, null, null];
+  let algos = [];
   let anims = [];
+  let results = []; // { id, name, metrics, trainTime, predictTime }
 
   requestAnimationFrame(() => {
-    rendererL = new CanvasRenderer(document.getElementById('canvas-left'));
-    rendererR = new CanvasRenderer(document.getElementById('canvas-right'));
+    for (let i = 0; i < 4; i++) {
+      const c = document.getElementById(`canvas-${i}`);
+      if (c) renderers[i] = new CanvasRenderer(c);
+    }
   });
 
   document.getElementById('compare-run-btn').addEventListener('click', () => {
     anims.forEach(a => cancelAnimationFrame(a));
     anims = [];
+    results = [];
 
-    const leftId = selectLeft.value;
-    const rightId = selectRight.value;
+    const selected = Array.from(document.querySelectorAll('.algo-check:checked')).map(c => c.value);
+    if (selected.length === 0) return;
 
-    algoL = ALGO_FACTORIES[leftId]();
-    algoR = ALGO_FACTORIES[rightId]();
+    algos = selected.map(id => ({ id, algo: ALGO_FACTORIES[id]() }));
 
-    // Defaults
-    const defaultsL = {};
-    for (const [k, v] of Object.entries(algoL.params)) defaultsL[k] = v.value;
-    const defaultsR = {};
-    for (const [k, v] of Object.entries(algoR.params)) defaultsR[k] = v.value;
+    // Update grid columns
+    const grid = document.getElementById('canvas-grid');
+    const cols = algos.length <= 2 ? '1fr 1fr' : '1fr 1fr';
+    grid.style.gridTemplateColumns = cols;
 
-    algoL.reset(defaultsL);
-    algoR.reset(defaultsR);
+    // Hide unused panels, show used ones
+    for (let i = 0; i < 4; i++) {
+      const panels = grid.children;
+      if (panels[i]) panels[i].style.display = i < algos.length ? '' : 'none';
+    }
 
-    document.getElementById('th-left').textContent = ALGORITHMS.find(a => a.id === leftId)?.name || leftId;
-    document.getElementById('th-right').textContent = ALGORITHMS.find(a => a.id === rightId)?.name || rightId;
+    // Update headers
+    const thead = document.getElementById('compare-thead');
+    thead.innerHTML = '<th>Metric</th>' + algos.map(a => {
+      const meta = ALGORITHMS.find(al => al.id === a.id);
+      return `<th>${meta?.name || a.id}</th>`;
+    }).join('');
 
-    // Run both
-    runAlgo(algoL, leftId, rendererL, 'status-left', defaultsL);
-    runAlgo(algoR, rightId, rendererR, 'status-right', defaultsR);
+    // Run each
+    algos.forEach((a, idx) => {
+      const meta = ALGORITHMS.find(al => al.id === a.id);
+      const label = document.getElementById(`canvas-label-${idx}`);
+      if (label) label.textContent = meta?.name || a.id;
 
-    // Update metrics after a delay
-    setTimeout(() => updateCompareMetrics(), 2000);
+      const defaults = {};
+      for (const [k, v] of Object.entries(a.algo.params)) defaults[k] = v.value;
+      a.algo.reset(defaults);
+
+      const t0 = performance.now();
+      runAlgo(a.algo, a.id, renderers[idx], `status-${idx}`, defaults, idx, t0);
+    });
+
+    setTimeout(() => updateCompareMetrics(), 2500);
     setTimeout(() => updateCompareMetrics(), 5000);
   });
 
-  function runAlgo(algo, id, renderer, statusId, defaults) {
-    document.getElementById(statusId).textContent = 'RUNNING';
-    document.getElementById(statusId).className = 'chip chip-success';
+  function runAlgo(algo, id, renderer, statusId, defaults, idx, startTime) {
+    const statusEl = document.getElementById(statusId);
+    if (statusEl) { statusEl.textContent = 'RUNNING'; statusEl.className = 'chip chip-success'; }
 
     const isIterative = (id === 'linear-regression' || id === 'neural-network');
     const isClustering = (id === 'kmeans' || id === 'random-forest');
 
     if (isIterative) {
       const maxEpochs = defaults.epochs || 200;
-      let frame;
       function tick() {
-        if (algo.epoch >= maxEpochs) {
-          document.getElementById(statusId).textContent = 'COMPLETE';
+        if (algo.epoch >= maxEpochs || algo.converged) {
+          const trainTime = performance.now() - startTime;
+          // Measure prediction time
+          const pt0 = performance.now();
+          for (let i = 0; i < 100; i++) algo.predict ? algo.predict(0.5, 0.5) : 0;
+          const predictTime = (performance.now() - pt0) / 100;
+          results[idx] = { id, trainTime, predictTime, metrics: algo.getMetrics() };
+          if (statusEl) statusEl.textContent = 'COMPLETE';
           algo.render(renderer);
           updateCompareMetrics();
           return;
@@ -159,55 +230,108 @@ export function renderCompare(container) {
           algo.step(defaults.learningRate || 0.5);
         }
         algo.render(renderer);
-        frame = requestAnimationFrame(tick);
+        const frame = requestAnimationFrame(tick);
         anims.push(frame);
       }
       tick();
     } else if (isClustering) {
-      let frame;
       function tick() {
         if (algo.converged) {
-          document.getElementById(statusId).textContent = 'CONVERGED';
+          const trainTime = performance.now() - startTime;
+          const pt0 = performance.now();
+          for (let i = 0; i < 100; i++) algo.predict ? algo.predict(0.5, 0.5) : 0;
+          const predictTime = (performance.now() - pt0) / 100;
+          results[idx] = { id, trainTime, predictTime, metrics: algo.getMetrics() };
+          if (statusEl) statusEl.textContent = 'CONVERGED';
           algo.render(renderer);
           updateCompareMetrics();
           return;
         }
         algo.step();
         algo.render(renderer);
-        frame = requestAnimationFrame(tick);
+        const frame = requestAnimationFrame(tick);
         anims.push(frame);
       }
       tick();
     } else {
-      // Single-shot
       algo.step(defaults);
+      const trainTime = performance.now() - startTime;
+      const pt0 = performance.now();
+      for (let i = 0; i < 100; i++) algo.predict ? algo.predict(0.5, 0.5) : 0;
+      const predictTime = (performance.now() - pt0) / 100;
+      results[idx] = { id, trainTime, predictTime, metrics: algo.getMetrics() };
       algo.render(renderer);
-      document.getElementById(statusId).textContent = 'COMPLETE';
+      if (statusEl) statusEl.textContent = 'COMPLETE';
       updateCompareMetrics();
     }
   }
 
   function updateCompareMetrics() {
-    if (!algoL || !algoR) return;
-    const mL = algoL.getMetrics();
-    const mR = algoR.getMetrics();
-    const allKeys = [...new Set([...Object.keys(mL), ...Object.keys(mR)])];
+    if (algos.length === 0) return;
+
+    // Gather all metrics
+    const allMetrics = algos.map((a, i) => {
+      const r = results[i];
+      const m = r?.metrics || a.algo.getMetrics();
+      const trainTime = r?.trainTime;
+      const predictTime = r?.predictTime;
+      const comp = COMPLEXITY[a.id] || {};
+      return {
+        ...m,
+        'Train Time': trainTime !== undefined ? `${trainTime.toFixed(1)}ms` : '—',
+        'Predict Time': predictTime !== undefined ? `${predictTime.toFixed(3)}ms` : '—',
+        'Train Complexity': comp.train || '—',
+        'Predict Complexity': comp.predict || '—',
+      };
+    });
+
+    const allKeys = [...new Set(allMetrics.flatMap(m => Object.keys(m)))];
 
     const tbody = document.getElementById('compare-tbody');
     if (tbody) {
       tbody.innerHTML = allKeys.map(k => `
         <tr>
           <td class="text-label-md">${k}</td>
-          <td>${mL[k] !== undefined ? mL[k] : '—'}</td>
-          <td>${mR[k] !== undefined ? mR[k] : '—'}</td>
+          ${allMetrics.map(m => `<td>${m[k] !== undefined ? m[k] : '—'}</td>`).join('')}
         </tr>
       `).join('');
     }
+
+    // Accuracy bar chart
+    drawAccuracyChart();
+  }
+
+  function drawAccuracyChart() {
+    const chartEl = document.getElementById('accuracy-chart');
+    if (!chartEl) return;
+
+    const data = algos.map((a, i) => {
+      const m = results[i]?.metrics || a.algo.getMetrics();
+      const accStr = m['Accuracy'] || '0';
+      const acc = parseFloat(accStr);
+      const meta = ALGORITHMS.find(al => al.id === a.id);
+      return { name: meta?.name || a.id, accuracy: isNaN(acc) ? 0 : acc };
+    });
+
+    const colors = ['#00d1ff', '#d0bcff', '#34d399', '#fbbf24'];
+    const maxAcc = Math.max(...data.map(d => d.accuracy), 1);
+
+    chartEl.innerHTML = data.map((d, i) => {
+      const pct = (d.accuracy / 100) * 100;
+      return `
+        <div style="display:flex;align-items:center;gap:var(--space-md);margin-bottom:var(--space-md)">
+          <div style="min-width:140px" class="text-body-sm">${d.name}</div>
+          <div style="flex:1;height:28px;background:rgba(164,230,255,0.06);border-radius:6px;overflow:hidden;position:relative">
+            <div style="height:100%;width:${pct}%;background:${colors[i % colors.length]};border-radius:6px;transition:width 0.6s ease;display:flex;align-items:center;justify-content:flex-end;padding-right:8px">
+              <span style="font-size:11px;font-weight:700;color:rgba(0,0,0,0.7)">${d.accuracy.toFixed(1)}%</span>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
   }
 
   return () => {
     anims.forEach(a => cancelAnimationFrame(a));
-    if (rendererL) rendererL.destroy();
-    if (rendererR) rendererR.destroy();
+    renderers.forEach(r => { if (r) r.destroy(); });
   };
 }

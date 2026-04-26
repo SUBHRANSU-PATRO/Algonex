@@ -390,6 +390,24 @@ export function createRandomForest() {
     };
   }
 
+  function getConfusionMatrix() {
+    if (trees.length === 0) return null;
+    const classes = [...new Set(data.labels)].sort();
+    const matrix = classes.map(() => classes.map(() => 0));
+    for (let i = 0; i < data.points.length; i++) {
+      const pred = predictPoint(data.points[i][0], data.points[i][1]);
+      const actual = data.labels[i];
+      const ri = classes.indexOf(actual);
+      const ci = classes.indexOf(pred);
+      if (ri >= 0 && ci >= 0) matrix[ri][ci]++;
+    }
+    return { matrix, classes };
+  }
+
+  function getTrees() {
+    return trees;
+  }
+
   return {
     params,
     predict: predictPoint,
@@ -398,8 +416,10 @@ export function createRandomForest() {
     render,
     getExplanation,
     getMetrics,
+    getConfusionMatrix,
     getParamExplanation,
     getVotesForPoint,
+    getTrees,
     get data() { return data; },
     get epoch() { return currentTreeIdx; },
     get converged() { return forestBuilt; },

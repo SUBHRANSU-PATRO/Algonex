@@ -1,9 +1,31 @@
 // ═══════════════════════════════════════════════════
 // Dataset Playground — real CSV visualization + metadata
+// Wired to AppState for cross-page data flow (T13)
 // ═══════════════════════════════════════════════════
 
-import { PRELOADED_DATASETS } from '../utils/datasets.js';
+import { PRELOADED_DATASETS, getIrisData, getHousingData, getTitanicData, getDiabetesData, getSyntheticData } from '../utils/datasets.js';
 import { parseCSV } from '../utils/csv-parser.js';
+import { AppState } from '../utils/app-state.js';
+
+const DATASET_LOADERS = {
+  iris: () => { const d = getIrisData(); return { ...d, name: 'Iris' }; },
+  housing: () => { const d = getHousingData(); return { ...d, name: 'Housing' }; },
+  titanic: () => { const d = getTitanicData(); return { ...d, name: 'Titanic' }; },
+  diabetes: () => { const d = getDiabetesData(); return { ...d, name: 'Diabetes' }; },
+  synthetic: () => { const d = getSyntheticData(3, 30, 0.1); return { ...d, name: 'Synthetic 2D' }; },
+};
+
+function showToast(message, type = 'success') {
+  const existing = document.getElementById('pg-toast');
+  if (existing) existing.remove();
+  const toast = document.createElement('div');
+  toast.id = 'pg-toast';
+  const bg = type === 'error' ? 'rgba(163,45,45,0.9)' : 'rgba(52,211,153,0.9)';
+  toast.style.cssText = `position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;background:${bg};color:#fff;font-family:"Space Grotesk",sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:fadeIn 0.3s ease`;
+  toast.textContent = message;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 4000);
+}
 
 const DATASET_METADATA = {
   iris: {
@@ -234,9 +256,9 @@ export function renderPlayground(container) {
             <h3 class="text-headline-md">${ds.name} Dataset</h3>
             <p class="text-body-sm text-muted mt-sm">${meta.description}</p>
           </div>
-          <a href="#workspace/${meta.task === 'Classification' ? 'knn' : 'linear-regression'}" class="btn btn-primary btn-sm">
-            <span class="material-symbols-outlined" style="font-size:16px">play_arrow</span> Visualize
-          </a>
+          <button class="btn btn-primary btn-sm" id="btn-use-dataset">
+            <span class="material-symbols-outlined" style="font-size:16px">play_arrow</span> Use this Dataset →
+          </button>
         </div>
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:var(--space-md);margin-bottom:var(--space-xl)">
           <div class="glass-panel" style="padding:var(--space-md);border-radius:var(--radius-lg);text-align:center">
@@ -269,6 +291,23 @@ export function renderPlayground(container) {
           </div>
         </div>
       </div>`;
+
+    // Wire "Use this Dataset" button
+    setTimeout(() => {
+      const useBtn = document.getElementById('btn-use-dataset');
+      if (useBtn) {
+        useBtn.addEventListener('click', () => {
+          const loader = DATASET_LOADERS[id];
+          if (loader) {
+            const dsData = loader();
+            AppState.setDataset(dsData, ds.name);
+            showToast(`Loaded ${ds.name} dataset · ${dsData.points?.length || '—'} samples`);
+            const algoRoute = meta.task === 'Classification' ? 'knn' : 'linear-regression';
+            window.location.hash = `#workspace/${algoRoute}`;
+          }
+        });
+      }
+    }, 50);
   }
 
   // ── Upload zone ──
@@ -286,18 +325,39 @@ export function renderPlayground(container) {
   fileInput.addEventListener('change', () => { if (fileInput.files[0]) handleFile(fileInput.files[0]); });
 
   function handleFile(file) {
-    if (!file.name.endsWith('.csv')) {
-      alert('Please upload a CSV file (.csv extension required).');
+    // T22: CSV validation
+    const validExts = ['.csv'];
+    const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+    if (!validExts.includes(ext)) {
+      showToast('Upload failed: file must be a .csv file', 'error');
       return;
     }
-    if (file.size > 5 * 1024 * 1024) {
-      alert('File too large. Please use a CSV under 5 MB.');
+    if (file.size > 10 * 1024 * 1024) {
+      showToast('Upload failed: file must be under 10 MB', 'error');
       return;
     }
     const reader = new FileReader();
+    reader.onerror = () => showToast('Upload failed: could not read file', 'error');
     reader.onload = e => {
-      uploadedData = parseCSV(e.target.result);
-      showUploadResult(file.name);
+      try {
+        uploadedData = parseCSV(e.target.result);
+        if (!uploadedData.rows || uploadedData.rows.length < 10) {
+          showToast('Upload failed: CSV must have at least 10 rows', 'error');
+          return;
+        }
+        if (!uploadedData.headers || uploadedData.headers.length < 2) {
+          showToast('Upload failed: CSV must have at least 2 columns', 'error');
+          return;
+        }
+        if (!uploadedData.numericCols || uploadedData.numericCols.length < 1) {
+          showToast('Upload failed: CSV must have at least one numeric column', 'error');
+          return;
+        }
+        showToast(`Loaded ${uploadedData.rows.length} rows × ${uploadedData.headers.length} columns`);
+        showUploadResult(file.name);
+      } catch (err) {
+        showToast('Upload failed: invalid CSV format', 'error');
+      }
     };
     reader.readAsText(file);
   }
@@ -319,9 +379,9 @@ export function renderPlayground(container) {
             <div class="chip chip-success mb-sm">Uploaded Successfully</div>
             <h3 class="text-headline-md">${filename}</h3>
           </div>
-          <a href="#workspace/linear-regression" class="btn btn-primary btn-sm">
-            <span class="material-symbols-outlined" style="font-size:16px">play_arrow</span> Run Algorithm
-          </a>
+          <button class="btn btn-primary btn-sm" id="btn-use-upload">
+            <span class="material-symbols-outlined" style="font-size:16px">play_arrow</span> Use this Dataset →
+          </button>
         </div>
 
         <!-- Stats row -->
@@ -423,5 +483,31 @@ export function renderPlayground(container) {
 
     // Initial plot
     requestAnimationFrame(() => drawScatterFromData('scatter-canvas', rows, xDefault, yDefault, '__none__'));
+
+    // Wire "Use this Dataset" button for uploaded data
+    setTimeout(() => {
+      const useUploadBtn = document.getElementById('btn-use-upload');
+      if (useUploadBtn) {
+        useUploadBtn.addEventListener('click', () => {
+          // Convert uploaded CSV rows to points/labels format for workspace
+          const xCol = numericCols[0];
+          const yCol = numericCols[1] || numericCols[0];
+          const points = rows.map(r => [parseFloat(r[xCol]) || 0, parseFloat(r[yCol]) || 0]);
+          // Try to find a label column (non-numeric)
+          const labelCol = headers.find(h => !numericCols.includes(h));
+          let labels = null;
+          let classNames = null;
+          if (labelCol) {
+            const uniqueVals = [...new Set(rows.map(r => String(r[labelCol])))];
+            classNames = uniqueVals;
+            labels = rows.map(r => uniqueVals.indexOf(String(r[labelCol])));
+          }
+          const dsData = { points, labels, classNames, headers, rows, numericCols, name: filename };
+          AppState.setDataset(dsData, filename);
+          showToast(`Dataset "${filename}" ready · ${rows.length} samples`);
+          window.location.hash = labels ? '#workspace/knn' : '#workspace/linear-regression';
+        });
+      }
+    }, 50);
   }
 }

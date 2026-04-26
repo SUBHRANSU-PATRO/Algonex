@@ -12,6 +12,7 @@ import { createRandomForest } from '../algorithms/random-forest.js';
 import { createSVM } from '../algorithms/svm.js';
 import { CanvasRenderer } from '../components/canvas-renderer.js';
 import { renderSidebar } from '../components/sidebar.js';
+import { renderTreeDiagram, showNodeTooltip, renderForestVoting } from '../components/tree-renderer.js';
 
 const ALGO_FACTORIES = {
   'linear-regression': createLinearRegression,
@@ -155,6 +156,23 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
             <canvas id="loss-curve-canvas"></canvas>
           </div>
         </div>
+
+        <!-- Tree Diagram View (DT + RF) -->
+        <div id="tree-diagram-section" style="display:none;margin-top:var(--space-lg)">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-sm)">
+            <div style="display:flex;gap:var(--space-sm)">
+              <button class="btn btn-sm btn-primary" id="btn-boundary-view">Boundary View</button>
+              <button class="btn btn-sm btn-outline" id="btn-tree-view">Tree View</button>
+            </div>
+            <span class="text-label-sm text-dim">Click any node for details</span>
+          </div>
+          <div class="vis-canvas-wrap" style="min-height:300px;border-radius:var(--radius-lg)" id="tree-canvas-wrap">
+            <canvas id="tree-diagram-canvas"></canvas>
+          </div>
+        </div>
+
+        <!-- Forest Voting Panel (RF) -->
+        <div id="forest-voting-section" style="margin-top:var(--space-lg)"></div>
 
         <!-- Evaluation Dashboard -->
         <div id="eval-dashboard" style="margin-top:var(--space-lg)"></div>
@@ -342,9 +360,12 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
     const maxIter   = currentParamValues.maxIterations || 30;
     const isIterative  = (algoId === 'linear-regression' || algoId === 'neural-network');
     const isForestLike = (algoId === 'random-forest');
+    const isSteppable  = (algoId === 'decision-tree' || algoId === 'svm');
 
     function tick() {
       if (!isRunning) return;
+      // T09: Check convergence for all algorithms
+      if (algo.converged) { stopRunning(); updateStatus('CONVERGED ✓', 'chip-success'); updateTreeDiagram(); return; }
       if (isIterative) {
         if (algo.epoch >= maxEpochs) { stopRunning(); updateStatus('COMPLETE', 'chip-success'); return; }
         const stepsPerFrame = Math.max(1, Math.floor(maxEpochs / 150)) * playSpeed;
@@ -355,8 +376,15 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
         if (algo.converged) { stopRunning(); updateStatus('CONVERGED', 'chip-success'); return; }
         algo.step();
       } else if (isForestLike) {
-        if (algo.converged) { stopRunning(); updateStatus('COMPLETE', 'chip-success'); return; }
+        if (algo.converged) { stopRunning(); updateStatus('COMPLETE', 'chip-success'); updateTreeDiagram(); return; }
         algo.step(currentParamValues);
+      } else if (isSteppable) {
+        algo.step(currentParamValues);
+        if (renderer) algo.render(renderer);
+        updateExplanation(); updateMetrics(); updateEvalDashboard(); updateTreeDiagram();
+        if (algo.converged) { stopRunning(); updateStatus('COMPLETE', 'chip-success'); return; }
+        animFrame = requestAnimationFrame(tick);
+        return;
       } else {
         algo.step(currentParamValues);
         if (renderer) algo.render(renderer);
@@ -625,6 +653,90 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
     ctx.beginPath(); ctx.arc(lastX, lastY, 4, 0, Math.PI * 2);
     ctx.fillStyle = '#00d1ff'; ctx.fill();
   }
+
+  // ── Tree Diagram (T06 + T08) ──
+  function updateTreeDiagram() {
+    // Decision Tree diagram
+    if (algoId === 'decision-tree' && algo.getTreeStructure) {
+      const treeRoot = algo.getTreeStructure();
+      const section = document.getElementById('tree-diagram-section');
+      if (section && treeRoot) {
+        section.style.display = 'block';
+        requestAnimationFrame(() => {
+          const treeCanvas = document.getElementById('tree-diagram-canvas');
+          if (treeCanvas) {
+            renderTreeDiagram(treeCanvas, treeRoot, null, (node, px, py, canvas) => {
+              showNodeTooltip(node, px, py, canvas);
+            });
+          }
+        });
+      }
+    }
+    // Random Forest voting panel
+    if (algoId === 'random-forest' && algo.getVotesForPoint) {
+      const section = document.getElementById('forest-voting-section');
+      if (section) {
+        renderForestVoting(section, 
+          Array.from({length: algo.epoch + 1}, (_, i) => ({ root: null })),
+          0.5, 0.5, 
+          (tree, x, y) => algo.predict(x, y),
+          null
+        );
+        // Use the actual votes API
+        const votes = algo.getVotesForPoint(0.5, 0.5);
+        if (votes && votes.length > 0) {
+          const voteCounts = {};
+          votes.forEach(v => { voteCounts[v.prediction] = (voteCounts[v.prediction] || 0) + 1; });
+          let winner = 0, maxV = 0;
+          for (const [cls, cnt] of Object.entries(voteCounts)) {
+            if (cnt > maxV) { winner = parseInt(cls); maxV = cnt; }
+          }
+          section.innerHTML = `
+            <div style="margin-top:var(--space-lg)">
+              <div class="text-label-sm text-dim mb-md" style="padding:4px 0;border-bottom:1px solid var(--glass-border)">FOREST VOTING — ${votes.length} TREES</div>
+              <div style="display:flex;gap:var(--space-sm);flex-wrap:wrap;margin-bottom:var(--space-md)">
+                ${votes.map(v => {
+                  const colors = ['#00d1ff','#d0bcff','#34d399','#fbbf24'];
+                  const c = colors[v.prediction % colors.length];
+                  return `<div style="flex:1;min-width:80px;padding:var(--space-sm) var(--space-md);background:rgba(164,230,255,0.04);border:1px solid rgba(164,230,255,0.1);border-radius:var(--radius-lg);text-align:center">
+                    <div class="text-label-sm text-dim">Tree ${v.treeIndex + 1}</div>
+                    <div style="margin:4px 0"><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:${c}"></span></div>
+                    <div style="font-size:10px;font-weight:600;color:${c}">Class ${v.prediction}</div>
+                  </div>`;
+                }).join('')}
+              </div>
+              <div style="padding:var(--space-md);background:rgba(52,211,153,0.08);border:1px solid rgba(52,211,153,0.2);border-radius:var(--radius-lg);text-align:center">
+                <div class="text-label-sm text-dim mb-sm">MAJORITY VOTE</div>
+                <div class="text-headline-md" style="color:#34d399;font-weight:800">Class ${winner}</div>
+                <div class="text-body-sm text-muted mt-sm">${maxV}/${votes.length} trees agree</div>
+              </div>
+            </div>`;
+        }
+      }
+    }
+  }
+
+  // Tree/Boundary view toggle buttons
+  (function setupTreeViewToggle() {
+    if (algoId !== 'decision-tree' && algoId !== 'random-forest') return;
+    setTimeout(() => {
+      const btnBoundary = document.getElementById('btn-boundary-view');
+      const btnTree = document.getElementById('btn-tree-view');
+      const canvasWrap = document.getElementById('canvas-wrap');
+      const treeSection = document.getElementById('tree-diagram-section');
+      if (!btnBoundary || !btnTree) return;
+      btnBoundary.addEventListener('click', () => {
+        if (canvasWrap) canvasWrap.style.display = '';
+        btnBoundary.className = 'btn btn-sm btn-primary';
+        btnTree.className = 'btn btn-sm btn-outline';
+      });
+      btnTree.addEventListener('click', () => {
+        btnTree.className = 'btn btn-sm btn-primary';
+        btnBoundary.className = 'btn btn-sm btn-outline';
+        updateTreeDiagram();
+      });
+    }, 200);
+  })();
 
   // ── KNN Hover Neighbor Highlight ──
   (function setupKNNHover() {

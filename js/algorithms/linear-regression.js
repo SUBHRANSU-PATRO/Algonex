@@ -1,5 +1,6 @@
 // ═══════════════════════════════════════════════════
-// Linear Regression — enhanced with param explanations + pred-vs-actual data
+// Linear Regression — enhanced with residual lines, gradient descent animation,
+// param explanations, and pred-vs-actual data
 // ═══════════════════════════════════════════════════
 
 import { generateLinearData, meanSquaredError } from '../utils/math-helpers.js';
@@ -10,6 +11,8 @@ export function createLinearRegression() {
   let data   = generateLinearData(60);
   let epoch  = 0;
   let lossHistory = [];
+  let _converged = false;
+  let showResiduals = true;
 
   const params = {
     learningRate: { value: 0.5, min: 0.01, max: 2, step: 0.01, label: 'Learning Rate' },
@@ -33,6 +36,13 @@ export function createLinearRegression() {
     epoch++;
     const loss = meanSquaredError(data.map(([x]) => predict(x)), data.map(([, y]) => y));
     lossHistory.push(loss);
+
+    // Convergence detection
+    if (lossHistory.length > 10) {
+      const recent = lossHistory.slice(-10);
+      const diff = Math.abs(recent[0] - recent[recent.length - 1]);
+      if (diff < 1e-6) _converged = true;
+    }
     return loss;
   }
 
@@ -41,6 +51,7 @@ export function createLinearRegression() {
     bias   = Math.random() * 0.5;
     epoch  = 0;
     lossHistory = [];
+    _converged = false;
     data = generateLinearData(paramValues.dataPoints || 60, 1.5, 0.2, paramValues.noise || 0.15);
   }
 
@@ -48,8 +59,61 @@ export function createLinearRegression() {
     renderer.clear();
     renderer.drawGrid();
     renderer.drawAxes('Feature X', 'Target Y');
+
+    // T10: Draw residual lines (error visualization)
+    if (showResiduals && epoch > 0) {
+      const ctx = renderer.ctx;
+      for (const [x, y] of data) {
+        const predY = predict(x);
+        const [px, py_actual] = renderer.toPixel(x, y);
+        const [, py_pred] = renderer.toPixel(x, predY);
+
+        // Dashed vertical error line
+        ctx.beginPath();
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = 'rgba(255, 180, 171, 0.3)';
+        ctx.lineWidth = 1;
+        ctx.moveTo(px, py_actual);
+        ctx.lineTo(px, py_pred);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
+
     renderer.drawPoints(data, null, 4);
+
+    // Draw regression line with glow
     renderer.drawLine(0, predict(0), 1, predict(1), '#00d1ff', 2.5);
+
+    // T10: Show weight/bias on canvas
+    if (epoch > 0) {
+      const ctx = renderer.ctx;
+      const w = renderer.width;
+      ctx.fillStyle = 'rgba(11,19,38,0.85)';
+      ctx.beginPath();
+      ctx.roundRect(w - 170, 16, 154, 48, 8);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(164,230,255,0.15)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = '#00d1ff';
+      ctx.font = 'bold 10px "Space Grotesk"';
+      ctx.textAlign = 'left';
+      ctx.fillText(`w = ${weight.toFixed(4)}`, w - 158, 34);
+      ctx.fillStyle = '#d0bcff';
+      ctx.fillText(`b = ${bias.toFixed(4)}`, w - 158, 50);
+      ctx.fillStyle = 'rgba(164,230,255,0.4)';
+      ctx.font = '8px "Space Grotesk"';
+      ctx.textAlign = 'right';
+      ctx.fillText(`Epoch ${epoch}`, w - 24, 34);
+
+      if (_converged) {
+        ctx.fillStyle = '#34d399';
+        ctx.font = 'bold 9px "Space Grotesk"';
+        ctx.fillText('Converged ✓', w - 24, 50);
+      }
+    }
   }
 
   function getPredVsActual() {
@@ -84,7 +148,7 @@ export function createLinearRegression() {
     const loss = lossHistory.length > 0 ? lossHistory[lossHistory.length - 1] : null;
     return {
       title: 'Linear Regression',
-      currentStep: `Epoch ${epoch}`,
+      currentStep: _converged ? `Converged at Epoch ${epoch}` : `Epoch ${epoch}`,
       formula: `y = ${weight.toFixed(4)}x + ${bias.toFixed(4)}`,
       parameters: [
         { name: 'Weight (w)', value: weight.toFixed(4), color: 'primary' },
@@ -92,11 +156,11 @@ export function createLinearRegression() {
         { name: 'Loss (MSE)', value: loss !== null ? loss.toFixed(6) : '—', color: loss < 0.01 ? 'success' : 'warning' },
       ],
       insight: epoch === 0
-        ? 'Press RUN to begin gradient descent. The line adjusts its slope and intercept to minimise Mean Squared Error — the average of squared prediction errors.'
-        : loss < 0.01
-          ? `Converged! The model has found a good fit with MSE = ${loss.toFixed(6)}. The line now represents the best linear relationship in your data.`
-          : `Gradient descent is adjusting weight (w) and bias (b) to reduce loss. Current direction: w ${weight > 0 ? '↗' : '↘'}.`,
-      theory: 'Linear Regression finds the line ŷ = wx + b that minimises the Mean Squared Error (MSE). Gradient descent iteratively adjusts w and b by moving in the direction of the negative gradient: w ← w - α·(∂MSE/∂w).',
+        ? 'Press RUN to begin gradient descent. The line adjusts its slope and intercept to minimise Mean Squared Error — the average of squared prediction errors. Watch the residual lines (dashed red) shrink as the model fits.'
+        : _converged
+          ? `Converged! The model has found a good fit with MSE = ${loss.toFixed(6)}. The residual lines show the remaining error for each point. The line now represents the best linear relationship in your data.`
+          : `Gradient descent is adjusting weight (w) and bias (b) to reduce loss. The dashed red lines show individual point errors being minimised. Current direction: w ${weight > 0 ? '↗' : '↘'}.`,
+      theory: 'Linear Regression finds the line ŷ = wx + b that minimises the Mean Squared Error (MSE). Gradient descent iteratively adjusts w and b by moving in the direction of the negative gradient: w ← w - α·(∂MSE/∂w). The dashed residual lines visualize the error each data point contributes.',
     };
   }
 
@@ -129,5 +193,6 @@ export function createLinearRegression() {
     get lossHistory() { return lossHistory; },
     get epoch()       { return epoch; },
     get data()        { return data; },
+    get converged()   { return _converged; },
   };
 }
