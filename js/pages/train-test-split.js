@@ -1,14 +1,26 @@
 // ═══════════════════════════════════════════════════
 // Train-Test Split Interactive Visualization
+// Wired to AppState for cross-page data flow (T14)
 // ═══════════════════════════════════════════════════
 
 import { generateBlobs } from '../utils/math-helpers.js';
+import { AppState } from '../utils/app-state.js';
 
 export function renderTrainTestSplit(container) {
   container.classList.add('page-content');
   let splitRatio = 0.8;
   let stratified = true;
-  let data = generateBlobs(50, [[0.3, 0.7], [0.7, 0.3]], 0.13);
+
+  // T14: Use AppState data if available, otherwise generate synthetic
+  let data;
+  let usingAppState = false;
+  if (AppState.dataset && AppState.dataset.points && AppState.dataset.labels) {
+    data = { points: [...AppState.dataset.points], labels: [...AppState.dataset.labels] };
+    usingAppState = true;
+  } else {
+    data = generateBlobs(50, [[0.3, 0.7], [0.7, 0.3]], 0.13);
+  }
+
   let trainIndices = [], testIndices = [];
   let animProgress = 0;
   let animFrame = null;
@@ -16,7 +28,7 @@ export function renderTrainTestSplit(container) {
   function computeSplit() {
     const n = data.points.length;
     const indices = data.points.map((_, i) => i);
-    if (stratified) {
+    if (stratified && data.labels) {
       const byClass = {};
       indices.forEach(i => { const c = data.labels[i]; if (!byClass[c]) byClass[c] = []; byClass[c].push(i); });
       trainIndices = []; testIndices = [];
@@ -38,9 +50,11 @@ export function renderTrainTestSplit(container) {
 
   function getClassDistribution(idxs) {
     const counts = {};
-    idxs.forEach(i => { const c = data.labels[i]; counts[c] = (counts[c] || 0) + 1; });
+    idxs.forEach(i => { const c = data.labels ? data.labels[i] : 0; counts[c] = (counts[c] || 0) + 1; });
     return counts;
   }
+
+  const datasetLabel = usingAppState ? `Using: <strong>${AppState.datasetName || 'Custom'}</strong> (${data.points.length} samples)` : 'Using synthetic data — <a href="#playground" style="color:var(--primary)">load a dataset</a> for real data';
 
   container.innerHTML = `
     <div class="aura aura-primary" style="top:50%;left:-200px"></div>
@@ -52,6 +66,7 @@ export function renderTrainTestSplit(container) {
         <p class="text-body-lg text-muted mt-sm" style="max-width:600px">
           Drag the slider to change the split ratio. Watch data points recolor in real time — cyan for training, purple for testing.
         </p>
+        <div class="text-body-sm mt-sm" style="color:var(--on-surface-variant)">${datasetLabel}</div>
       </div>
 
       <!-- Controls -->
@@ -84,6 +99,14 @@ export function renderTrainTestSplit(container) {
             <span class="material-symbols-outlined" style="font-size:16px">refresh</span> New Data
           </button>
         </div>
+      </div>
+
+      <!-- Apply Split & Continue (T14) -->
+      <div style="margin-top:var(--space-lg);display:flex;justify-content:flex-end;gap:var(--space-sm)">
+        <button class="btn btn-primary" id="tts-apply-continue" style="padding:var(--space-sm) var(--space-xl)">
+          <span class="material-symbols-outlined" style="font-size:18px">check_circle</span>
+          Apply Split & Continue to Workspace →
+        </button>
       </div>
 
       <!-- Split Bar -->
@@ -151,7 +174,41 @@ export function renderTrainTestSplit(container) {
   document.getElementById('tts-reshuffle').addEventListener('click', () => computeSplit());
   document.getElementById('tts-newdata').addEventListener('click', () => {
     data = generateBlobs(50, [[0.3, 0.7], [0.7, 0.3]], 0.13);
+    usingAppState = false;
     computeSplit();
+  });
+
+  // T14: Apply Split & Continue → saves to AppState and navigates
+  document.getElementById('tts-apply-continue').addEventListener('click', () => {
+    const trainPoints = trainIndices.map(i => data.points[i]);
+    const trainLabels = data.labels ? trainIndices.map(i => data.labels[i]) : null;
+    const testPoints = testIndices.map(i => data.points[i]);
+    const testLabels = data.labels ? testIndices.map(i => data.labels[i]) : null;
+
+    const trainData = { points: trainPoints, labels: trainLabels };
+    const testData = { points: testPoints, labels: testLabels };
+
+    // If no dataset was loaded, set it now
+    if (!AppState.dataset) {
+      AppState.setDataset({
+        points: data.points,
+        labels: data.labels,
+        classNames: data.classNames || null,
+      }, 'Synthetic');
+    }
+
+    AppState.setSplit(splitRatio, trainData, testData);
+
+    // Show toast
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;background:rgba(52,211,153,0.9);color:#fff;font-family:"Space Grotesk",sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:fadeIn 0.3s ease';
+    toast.textContent = `Split applied: ${trainIndices.length} train / ${testIndices.length} test → Navigating to workspace`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+
+    // Navigate to workspace
+    const algoRoute = data.labels ? 'knn' : 'linear-regression';
+    window.location.hash = `#workspace/${algoRoute}`;
   });
 
   function startAnimation() {
@@ -208,10 +265,10 @@ export function renderTrainTestSplit(container) {
       ctx.fillStyle = `rgba(${r},${g},${b},${alpha})`;
       ctx.fill();
 
-      // Class shape indicator
-      if (data.labels[i] === 1) {
-        ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.6})`;
-        ctx.lineWidth = 1;
+      // Class shape indicator for test points (hollow circle)
+      if (!isTrain) {
+        ctx.strokeStyle = `rgba(${r},${g},${b},${alpha * 0.8})`;
+        ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(px, py, 8, 0, Math.PI * 2); ctx.stroke();
       }
     }

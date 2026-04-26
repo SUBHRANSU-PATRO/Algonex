@@ -51,6 +51,21 @@ const DATASET_METADATA = {
     task: 'Classification',
     description: 'Predict Titanic passenger survival. A classic binary classification benchmark.',
   },
+  diabetes: {
+    samples: 442, features: 10, classes: null,
+    featureNames: ['Age', 'Sex', 'BMI', 'BP', 'S1', 'S2', 'S3', 'S4', 'S5', 'S6'],
+    classNames: null, classCounts: null,
+    task: 'Regression',
+    description: 'Predict diabetes disease progression one year after baseline. 10 normalized physiological measurements.',
+  },
+  synthetic: {
+    samples: 90, features: 2, classes: 3,
+    featureNames: ['Feature X', 'Feature Y'],
+    classNames: ['Class 0', 'Class 1', 'Class 2'],
+    classCounts: [30, 30, 30],
+    task: 'Classification',
+    description: 'Synthetic 2D dataset with 3 Gaussian clusters. Great for visualizing classification boundaries.',
+  },
 };
 
 // ── Canvas scatter plot from CSV data ──────────────────────
@@ -301,9 +316,8 @@ export function renderPlayground(container) {
           if (loader) {
             const dsData = loader();
             AppState.setDataset(dsData, ds.name);
-            showToast(`Loaded ${ds.name} dataset · ${dsData.points?.length || '—'} samples`);
-            const algoRoute = meta.task === 'Classification' ? 'knn' : 'linear-regression';
-            window.location.hash = `#workspace/${algoRoute}`;
+            showToast(`Loaded ${ds.name} dataset · ${dsData.points?.length || '—'} samples → Next: Preprocessing`);
+            window.location.hash = '#preprocessing';
           }
         });
       }
@@ -504,8 +518,8 @@ export function renderPlayground(container) {
           }
           const dsData = { points, labels, classNames, headers, rows, numericCols, name: filename };
           AppState.setDataset(dsData, filename);
-          showToast(`Dataset "${filename}" ready · ${rows.length} samples`);
-          window.location.hash = labels ? '#workspace/knn' : '#workspace/linear-regression';
+          showToast(`Dataset "${filename}" ready · ${rows.length} samples → Next: Preprocessing`);
+          window.location.hash = '#preprocessing';
         });
       }
     }, 50);

@@ -52,12 +52,22 @@ export function createSVM() {
     return avgLoss;
   }
 
-  function reset(paramValues) {
+  function reset(paramValues, externalData = null) {
     C = paramValues.C || 1.0;
-    const n = paramValues.dataPoints || 40;
-    const spread = paramValues.spread || 0.12;
-    data = generateBlobs(n, [[0.3, 0.7], [0.7, 0.3]], spread);
-    data.binaryLabels = data.labels.map(l => l === 0 ? -1 : 1);
+    if (externalData && externalData.points && externalData.points.length > 0 && externalData.labels) {
+      data = { points: externalData.points, labels: [...externalData.labels] };
+      // SVM needs binary labels — convert multiclass to binary (class 0 vs rest)
+      const uniqueClasses = [...new Set(data.labels)];
+      if (uniqueClasses.length > 2) {
+        data.labels = data.labels.map(l => l === uniqueClasses[0] ? 0 : 1);
+      }
+      data.binaryLabels = data.labels.map(l => l === 0 ? -1 : 1);
+    } else {
+      const n = paramValues.dataPoints || 40;
+      const spread = paramValues.spread || 0.12;
+      data = generateBlobs(n, [[0.3, 0.7], [0.7, 0.3]], spread);
+      data.binaryLabels = data.labels.map(l => l === 0 ? -1 : 1);
+    }
     w = [(Math.random() - 0.5) * 0.1, (Math.random() - 0.5) * 0.1];
     b = 0; epoch = 0; lossHistory = []; supportVectors = [];
   }

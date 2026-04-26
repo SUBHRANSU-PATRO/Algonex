@@ -12,6 +12,8 @@ import { createNeuralNetwork } from '../algorithms/neural-network.js';
 import { createRandomForest } from '../algorithms/random-forest.js';
 import { createSVM } from '../algorithms/svm.js';
 import { CanvasRenderer } from '../components/canvas-renderer.js';
+import { AppState } from '../utils/app-state.js';
+import { normalize2D } from '../utils/math-helpers.js';
 
 const ALGO_FACTORIES = {
   'linear-regression': createLinearRegression,
@@ -193,7 +195,17 @@ export function renderCompare(container) {
 
       const defaults = {};
       for (const [k, v] of Object.entries(a.algo.params)) defaults[k] = v.value;
-      a.algo.reset(defaults);
+
+      // T13: Inject AppState data if available
+      let extData = null;
+      if (AppState.splitDone && AppState.trainData && AppState.trainData.points?.length > 0) {
+        const normPts = normalize2D(AppState.trainData.points);
+        extData = { points: normPts, labels: AppState.trainData.labels, classNames: AppState.dataset?.classNames };
+      } else if (AppState.dataset && AppState.dataset.points?.length > 0) {
+        const normPts = normalize2D(AppState.dataset.points);
+        extData = { points: normPts, labels: AppState.dataset.labels, classNames: AppState.dataset.classNames };
+      }
+      a.algo.reset(defaults, extData);
 
       const t0 = performance.now();
       runAlgo(a.algo, a.id, renderers[idx], `status-${idx}`, defaults, idx, t0);

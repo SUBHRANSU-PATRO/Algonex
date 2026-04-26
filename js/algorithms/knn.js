@@ -31,11 +31,15 @@ export function createKNN() {
     return winner;
   }
 
-  function reset(paramValues) {
+  function reset(paramValues, externalData = null) {
     k = paramValues.k || 5;
-    const nPerCluster = paramValues.dataPoints || 40;
-    const spread = paramValues.spread || 0.12;
-    data = generateBlobs(nPerCluster, [[0.25, 0.75], [0.75, 0.25], [0.75, 0.75]], spread);
+    if (externalData && externalData.points && externalData.points.length > 0 && externalData.labels) {
+      data = { points: externalData.points, labels: externalData.labels };
+    } else {
+      const nPerCluster = paramValues.dataPoints || 40;
+      const spread = paramValues.spread || 0.12;
+      data = generateBlobs(nPerCluster, [[0.25, 0.75], [0.75, 0.25], [0.75, 0.75]], spread);
+    }
     boundaryDrawn = false;
   }
 

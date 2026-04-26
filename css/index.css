@@ -1240,28 +1240,7 @@ input[type="range"]::-moz-range-thumb {
   font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
 }
 
-/* ── Responsive ──────────────────────────────────────────── */
-@media (max-width: 1200px) {
-  .workspace-grid {
-    grid-template-columns: 240px 1fr 280px;
-  }
-}
-
-@media (max-width: 1024px) {
-  .workspace-grid {
-    grid-template-columns: 1fr;
-    height: auto;
-  }
-  .sidebar {
-    display: none;
-  }
-  .page-with-sidebar {
-    margin-left: 0;
-  }
-  .navbar-links {
-    display: none;
-  }
-}
+/* Responsive rules — see bottom of file for comprehensive mobile breakpoints */
 
 
 /* ── Preprocessing Page ──────────────────────────────────── */
@@ -1628,6 +1607,18 @@ input[type="range"]::-moz-range-thumb {
   }
   .workspace-canvas {
     min-height: 50vh;
+  }
+  .sidebar {
+    display: none;
+  }
+  .page-with-sidebar {
+    margin-left: 0;
+  }
+  .preprocess-controls-row {
+    flex-direction: column;
+  }
+  .features-grid {
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   }
 }
 

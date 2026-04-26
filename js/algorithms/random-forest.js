@@ -143,13 +143,17 @@ export function createRandomForest() {
     }));
   }
 
-  function reset(paramValues) {
+  function reset(paramValues, externalData = null) {
     nTrees = paramValues.nTrees || 5;
     maxDepth = paramValues.maxDepth || 4;
     minSamples = paramValues.minSamples || 5;
-    const n = paramValues.dataPoints || 40;
-    const spread = paramValues.spread || 0.13;
-    data = generateBlobs(n, [[0.3, 0.7], [0.7, 0.3]], spread);
+    if (externalData && externalData.points && externalData.points.length > 0 && externalData.labels) {
+      data = { points: externalData.points, labels: externalData.labels };
+    } else {
+      const n = paramValues.dataPoints || 40;
+      const spread = paramValues.spread || 0.13;
+      data = generateBlobs(n, [[0.3, 0.7], [0.7, 0.3]], spread);
+    }
     trees = [];
     currentTreeIdx = 0;
     forestBuilt = false;

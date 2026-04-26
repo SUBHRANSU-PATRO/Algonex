@@ -83,10 +83,14 @@ export function createDecisionTree() {
       : predictPoint(x, y, node.right, depth + 1, maxDepthLimit);
   }
 
-  function reset(paramValues) {
+  function reset(paramValues, externalData = null) {
     maxDepth = paramValues.maxDepth || 4;
     minSamples = paramValues.minSamples || 5;
-    data = generateBlobs(paramValues.dataPoints || 40, [[0.3, 0.7], [0.7, 0.3]], paramValues.spread || 0.13);
+    if (externalData && externalData.points && externalData.points.length > 0 && externalData.labels) {
+      data = { points: externalData.points, labels: externalData.labels };
+    } else {
+      data = generateBlobs(paramValues.dataPoints || 40, [[0.3, 0.7], [0.7, 0.3]], paramValues.spread || 0.13);
+    }
     tree = null; treeBuilt = false; revealDepth = 0;
   }
 

@@ -82,10 +82,19 @@ export function createNeuralNetwork() {
     return activations[activations.length - 1][0] > 0.5 ? 1 : 0;
   }
 
-  function reset(paramValues) {
+  function reset(paramValues, externalData = null) {
     const hs = paramValues.hiddenSize || 6;
     layers = [2, hs, hs, 1];
-    data = generateMoonsData(paramValues.dataPoints || 50, 0.08);
+    if (externalData && externalData.points && externalData.points.length > 0 && externalData.labels) {
+      data = { points: externalData.points, labels: [...externalData.labels] };
+      // MLP has single sigmoid output — convert multiclass to binary (class 0 vs rest)
+      const uniqueClasses = [...new Set(data.labels)];
+      if (uniqueClasses.length > 2) {
+        data.labels = data.labels.map(l => l === uniqueClasses[0] ? 0 : 1);
+      }
+    } else {
+      data = generateMoonsData(paramValues.dataPoints || 50, 0.08);
+    }
     epoch = 0; lossHistory = [];
     initWeights();
   }

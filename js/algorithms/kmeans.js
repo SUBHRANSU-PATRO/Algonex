@@ -65,17 +65,21 @@ export function createKMeans() {
     if (!changed) converged = true;
   }
 
-  function reset(paramValues) {
+  function reset(paramValues, externalData = null) {
     k = paramValues.k || 3;
-    const n = paramValues.dataPoints || 50;
-    const spread = paramValues.spread || 0.1;
-
-    // Generate ground-truth blobs
-    const centers = [];
-    for (let i = 0; i < k; i++) {
-      centers.push([0.15 + Math.random() * 0.7, 0.15 + Math.random() * 0.7]);
+    if (externalData && externalData.points && externalData.points.length > 0) {
+      // Unsupervised — just use points, ignore labels
+      data = { points: externalData.points, labels: new Array(externalData.points.length).fill(0) };
+    } else {
+      const n = paramValues.dataPoints || 50;
+      const spread = paramValues.spread || 0.1;
+      // Generate ground-truth blobs
+      const centers = [];
+      for (let i = 0; i < k; i++) {
+        centers.push([0.15 + Math.random() * 0.7, 0.15 + Math.random() * 0.7]);
+      }
+      data = generateBlobs(n, centers, spread);
     }
-    data = generateBlobs(n, centers, spread);
     iteration = 0;
     converged = false;
     centroidHistory = [];

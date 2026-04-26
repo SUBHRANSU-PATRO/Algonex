@@ -46,13 +46,18 @@ export function createLinearRegression() {
     return loss;
   }
 
-  function reset(paramValues) {
+  function reset(paramValues, externalData = null) {
     weight = Math.random() * 0.5;
     bias   = Math.random() * 0.5;
     epoch  = 0;
     lossHistory = [];
     _converged = false;
-    data = generateLinearData(paramValues.dataPoints || 60, 1.5, 0.2, paramValues.noise || 0.15);
+    if (externalData && externalData.points && externalData.points.length > 0) {
+      // Use external data — points are [[x, y], ...] pairs for regression
+      data = externalData.points.map(p => [p[0], p[1]]);
+    } else {
+      data = generateLinearData(paramValues.dataPoints || 60, 1.5, 0.2, paramValues.noise || 0.15);
+    }
   }
 
   function render(renderer) {

@@ -1,5 +1,9 @@
 // ═══════════════════════════════════════════════════
 // Algorithm Visualization Workspace
+// T13: AppState integration for real dataset flow
+// T21: Loading spinner for heavy compute
+// T23: Clean state reset on algorithm switch 
+// T11: Enhanced evaluation dashboard
 // ═══════════════════════════════════════════════════
 
 import { getAlgorithmById } from '../algorithms/registry.js';
@@ -13,6 +17,8 @@ import { createSVM } from '../algorithms/svm.js';
 import { CanvasRenderer } from '../components/canvas-renderer.js';
 import { renderSidebar } from '../components/sidebar.js';
 import { renderTreeDiagram, showNodeTooltip, renderForestVoting } from '../components/tree-renderer.js';
+import { AppState } from '../utils/app-state.js';
+import { normalize2D } from '../utils/math-helpers.js';
 
 const ALGO_FACTORIES = {
   'linear-regression': createLinearRegression,
@@ -52,9 +58,21 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
   let currentHistoryIdx = -1;
   let playSpeed = 1;
 
+  // ── T13: Build external data from AppState for real pipeline ──
+  let externalData = null;
+  if (AppState.splitDone && AppState.trainData && AppState.trainData.points?.length > 0) {
+    // Use split training data (preferred — pipeline went through split page)
+    const normPts = normalize2D(AppState.trainData.points);
+    externalData = { points: normPts, labels: AppState.trainData.labels, classNames: AppState.dataset?.classNames };
+  } else if (AppState.dataset && AppState.dataset.points?.length > 0) {
+    // Use raw dataset (no split yet — user may have skipped split page)
+    const normPts = normalize2D(AppState.dataset.points);
+    externalData = { points: normPts, labels: AppState.dataset.labels, classNames: AppState.dataset.classNames };
+  }
+
   // Init params
   for (const [key, def] of Object.entries(algo.params)) currentParamValues[key] = def.value;
-  algo.reset(currentParamValues);
+  algo.reset(currentParamValues, externalData);
 
   // Build controls HTML
   let controlsHTML = '';
@@ -130,6 +148,26 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
 
       <!-- Center: Canvas + Evaluation -->
       <section class="workspace-canvas" id="ws-canvas">
+        <!-- T21: Loading Spinner Overlay -->
+        <div id="ws-spinner" style="display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(8,12,24,0.7);z-index:9999;display:none;align-items:center;justify-content:center">
+          <div style="text-align:center">
+            <div style="width:48px;height:48px;border:3px solid rgba(164,230,255,0.15);border-top:3px solid var(--primary);border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto var(--space-md)"></div>
+            <div class="text-body-sm text-muted" id="spinner-text">Computing decision boundary…</div>
+          </div>
+        </div>
+
+        <!-- T16: Dataset Info Card -->
+        ${AppState.datasetName ? `
+        <div class="glass-panel" style="padding:var(--space-sm) var(--space-lg);border-radius:var(--radius-lg);margin-bottom:var(--space-md);display:flex;align-items:center;gap:var(--space-lg);border:1px solid rgba(52,211,153,0.15)">
+          <div style="display:flex;align-items:center;gap:var(--space-sm)">
+            <span class="material-symbols-outlined text-success" style="font-size:18px">database</span>
+            <span class="text-label-md">${AppState.datasetName}</span>
+          </div>
+          <span class="text-label-sm text-dim">${AppState.dataset?.points?.length || '—'} samples</span>
+          ${AppState.splitDone ? `<span class="chip chip-success" style="font-size:9px">Split: ${Math.round(AppState.splitRatio * 100)}/${Math.round((1 - AppState.splitRatio) * 100)}</span>` : `<span class="chip chip-warning" style="font-size:9px">No split applied</span>`}
+          ${AppState.dataset?.classNames ? `<span class="text-label-sm text-dim">${AppState.dataset.classNames.length} classes</span>` : ''}
+        </div>` : ''}
+
         <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-bottom:var(--space-md)">
           <div>
             <h1 class="text-headline-lg">${meta.name}</h1>
@@ -226,7 +264,7 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
         debounceTimers[key] = setTimeout(() => {
           if (isRunning) {
             stopRunning();
-            algo.reset(currentParamValues);
+            algo.reset(currentParamValues, externalData);
             iterHistory = [];
             if (renderer) algo.render(renderer);
             updateExplanation(); updateMetrics(); updateEvalDashboard();
@@ -266,7 +304,7 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
     if (iterHistory.length > 1) {
       iterHistory.pop(); // remove current
       const prev = iterHistory[iterHistory.length - 1];
-      algo.reset(prev.params);
+      algo.reset(prev.params, externalData);
       // replay steps
       for (let s = 0; s < prev.stepCount; s++) {
         if (algoId === 'linear-regression' || algoId === 'neural-network') {
@@ -289,7 +327,7 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
   // Reset
   document.getElementById('btn-reset').addEventListener('click', () => {
     stopRunning();
-    algo.reset(currentParamValues);
+    algo.reset(currentParamValues, externalData);
     iterHistory = [];
     document.getElementById('btn-prev').disabled = true;
     document.getElementById('btn-prev').style.opacity = '0.4';
@@ -481,7 +519,11 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
       const cmData = algo.getConfusionMatrix();
       if (!cmData) { dash.innerHTML = ''; return; }
       const { matrix, classes } = cmData;
-      const classNames = ['Class 0', 'Class 1', 'Class 2'].slice(0, classes.length);
+      // T11: Use actual class names from AppState/dataset if available
+      const dsClassNames = AppState.dataset?.classNames || algo.data?.classNames || null;
+      const classNames = dsClassNames 
+        ? dsClassNames.slice(0, classes.length) 
+        : classes.map((_, i) => `Class ${i}`);
       const maxVal = Math.max(...matrix.flat(), 1);
 
       let matHTML = `<table class="conf-matrix">
@@ -573,6 +615,12 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
       ctx.beginPath(); ctx.arc(px, py, 3, 0, Math.PI*2);
       ctx.fillStyle = '#d0bcff80'; ctx.fill();
     }
+    // T11: Diagonal reference line (perfect prediction)
+    ctx.beginPath(); ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(164,230,255,0.15)'; ctx.lineWidth = 1;
+    ctx.moveTo(pad, h - pad); ctx.lineTo(w - pad, pad);
+    ctx.stroke(); ctx.setLineDash([]);
+
     const sorted = [...predActual].sort((a, b) => a.x - b.x);
     ctx.beginPath(); ctx.strokeStyle = '#00d1ff'; ctx.lineWidth = 2;
     sorted.forEach((d, i) => {
@@ -584,6 +632,7 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
     ctx.fillText('FEATURE X', w/2, h - 5);
     ctx.fillStyle = '#d0bcff'; ctx.fillText('● Actual', w - 80, 16);
     ctx.fillStyle = '#00d1ff'; ctx.fillText('— Predicted', w - 80, 28);
+    ctx.fillStyle = 'rgba(164,230,255,0.2)'; ctx.fillText('⋯ Perfect', w - 80, 40);
   }
 
   // ── Loss Curve ──
@@ -815,10 +864,30 @@ export function renderWorkspace(container, algoId = 'linear-regression') {
     });
   })();
 
-  // Cleanup
+  // T21: Spinner helper
+  function showSpinner(text = 'Computing…') {
+    const s = document.getElementById('ws-spinner');
+    const t = document.getElementById('spinner-text');
+    if (s) { s.style.display = 'flex'; }
+    if (t) t.textContent = text;
+  }
+  function hideSpinner() {
+    const s = document.getElementById('ws-spinner');
+    if (s) s.style.display = 'none';
+  }
+
+  // T23: Cleanup — called on algorithm switch or page navigation
   return () => {
     stopRunning();
+    iterHistory = [];
     if (renderer) renderer.destroy();
+    renderer = null;
+    // Clear all canvas elements to prevent stale artifacts
+    const canvases = container.querySelectorAll('canvas');
+    canvases.forEach(c => {
+      const ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, c.width, c.height);
+    });
     if (sidebarContainer && sidebarContainer.parentNode) {
       sidebarContainer.parentNode.removeChild(sidebarContainer);
     }

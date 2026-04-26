@@ -1,6 +1,9 @@
 // ═══════════════════════════════════════════════════
 // Data Preprocessing Visualization Module
+// Wired to AppState for cross-page data flow (T15)
 // ═══════════════════════════════════════════════════
+
+import { AppState } from '../utils/app-state.js';
 
 function generateRawDataset() {
   const n = 80;
@@ -39,6 +42,16 @@ function zScoreNorm(arr) {
   const mean = vals.reduce((s, v) => s + v, 0) / vals.length;
   const std = Math.sqrt(vals.reduce((s, v) => s + (v - mean) ** 2, 0) / vals.length) || 1;
   return arr.map(v => v === null ? null : (v - mean) / std);
+}
+
+function robustScaleNorm(arr) {
+  const vals = arr.filter(v => v !== null).sort((a, b) => a - b);
+  if (vals.length < 4) return arr;
+  const q1 = vals[Math.floor(vals.length * 0.25)];
+  const q3 = vals[Math.floor(vals.length * 0.75)];
+  const median = vals[Math.floor(vals.length * 0.5)];
+  const iqr = q3 - q1 || 1;
+  return arr.map(v => v === null ? null : (v - median) / iqr);
 }
 
 function imputeMean(arr) {
@@ -84,6 +97,12 @@ export function renderPreprocessing(container) {
   let rawData = generateRawDataset();
   let imputeMethod = 'mean', scaleMethod = 'minmax', selectedFeature = 0;
 
+  // T15: Check if AppState has data loaded
+  const hasAppData = AppState.dataset && AppState.datasetName;
+  const datasetLabel = hasAppData
+    ? `Using: <strong>${AppState.datasetName}</strong> — preprocessing applied to generated sample data. Apply when done.`
+    : 'Using generated sample data — <a href="#playground" style="color:var(--primary)">load a dataset first</a> for real pipeline.';
+
   container.innerHTML = `
     <div class="aura aura-primary" style="top:-100px;right:-200px"></div>
     <div class="aura aura-secondary" style="bottom:-100px;left:-200px"></div>
@@ -94,6 +113,7 @@ export function renderPreprocessing(container) {
         <p class="text-body-lg text-muted mt-sm" style="max-width:600px">
           Explore how missing value handling, feature scaling, and normalization transform your data before training.
         </p>
+        <div class="text-body-sm mt-sm" style="color:var(--on-surface-variant)">${datasetLabel}</div>
       </div>
       <div class="preprocess-controls-row">
         <div class="glass-panel preprocess-control-card">
@@ -115,6 +135,7 @@ export function renderPreprocessing(container) {
           <div class="segmented-control" id="pp-scale-control">
             <button class="active" data-method="minmax">Min-Max</button>
             <button data-method="zscore">Z-Score</button>
+            <button data-method="robust">Robust</button>
             <button data-method="none">None</button>
           </div>
         </div>
@@ -124,6 +145,19 @@ export function renderPreprocessing(container) {
           </button>
         </div>
       </div>
+
+      <!-- T15: Apply & Navigate Buttons -->
+      <div style="margin-top:var(--space-lg);display:flex;justify-content:flex-end;gap:var(--space-sm)">
+        <button class="btn btn-outline" id="pp-apply-btn" style="padding:var(--space-sm) var(--space-lg)">
+          <span class="material-symbols-outlined" style="font-size:18px">check</span>
+          Apply Preprocessing
+        </button>
+        <button class="btn btn-primary" id="pp-next-btn" style="padding:var(--space-sm) var(--space-xl)">
+          <span class="material-symbols-outlined" style="font-size:18px">arrow_forward</span>
+          Next: Train-Test Split →
+        </button>
+      </div>
+
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:var(--space-lg);margin-top:var(--space-xl)">
         <div class="card-glass" style="padding:var(--space-lg)">
           <div style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:var(--space-md)">
@@ -154,6 +188,13 @@ export function renderPreprocessing(container) {
         <h2 class="text-headline-md mb-md">Feature Scaling Comparison</h2>
         <div class="vis-canvas-wrap" style="min-height:280px"><canvas id="pp-scaling-canvas"></canvas></div>
       </div>
+
+      <!-- Missing Values Heatmap (T15) -->
+      <div style="margin-top:var(--space-xl)">
+        <h2 class="text-headline-md mb-md">Missing Values Heatmap</h2>
+        <div class="vis-canvas-wrap" style="min-height:200px"><canvas id="pp-missing-heatmap"></canvas></div>
+      </div>
+
       <div class="card-glass" style="padding:var(--space-xl);margin-top:var(--space-xl);border-left:3px solid var(--primary)">
         <div style="display:flex;align-items:center;gap:var(--space-sm);margin-bottom:var(--space-md)">
           <span class="material-symbols-outlined text-primary" style="font-size:20px">lightbulb</span>
@@ -172,11 +213,32 @@ export function renderPreprocessing(container) {
   });
   document.getElementById('pp-regenerate').addEventListener('click', () => { rawData = generateRawDataset(); updateAll(); });
 
+  // T15: Apply preprocessing to AppState
+  document.getElementById('pp-apply-btn').addEventListener('click', () => {
+    AppState.preprocessingDone = true;
+    const toast = document.createElement('div');
+    toast.style.cssText = 'position:fixed;bottom:24px;right:24px;z-index:9999;padding:12px 20px;border-radius:10px;background:rgba(52,211,153,0.9);color:#fff;font-family:"Space Grotesk",sans-serif;font-size:13px;font-weight:500;box-shadow:0 8px 32px rgba(0,0,0,0.4);animation:fadeIn 0.3s ease';
+    toast.textContent = `Preprocessing applied (${imputeMethod} imputation + ${scaleMethod} scaling)`;
+    document.body.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+  });
+
+  // T15: Navigate to train-test-split
+  document.getElementById('pp-next-btn').addEventListener('click', () => {
+    AppState.preprocessingDone = true;
+    window.location.hash = '#train-test-split';
+  });
+
   function getFeat(idx) { return rawData.features[Object.keys(rawData.features)[idx]]; }
   function getImputed(raw) { return imputeMethod === 'mean' ? imputeMean(raw) : imputeMethod === 'median' ? imputeMedian(raw) : raw.filter(v => v !== null); }
-  function getScaled(imp) { return scaleMethod === 'minmax' ? minMaxNorm(imp) : scaleMethod === 'zscore' ? zScoreNorm(imp) : imp; }
+  function getScaled(imp) {
+    if (scaleMethod === 'minmax') return minMaxNorm(imp);
+    if (scaleMethod === 'zscore') return zScoreNorm(imp);
+    if (scaleMethod === 'robust') return robustScaleNorm(imp);
+    return imp;
+  }
 
-  function updateAll() { updateTables(); updateHistograms(); updateScaling(); updateExplanation(); }
+  function updateAll() { updateTables(); updateHistograms(); updateScaling(); updateMissingHeatmap(); updateExplanation(); }
 
   function updateTables() {
     const raw = getFeat(selectedFeature), fname = rawData.featureNames[selectedFeature];
@@ -236,16 +298,54 @@ export function renderPreprocessing(container) {
     }
   }
 
+  // T15: Missing values heatmap
+  function updateMissingHeatmap() {
+    const cv = setupCanvas('pp-missing-heatmap'); if (!cv) return;
+    const { ctx, w, h } = cv; ctx.clearRect(0, 0, w, h);
+    const keys = Object.keys(rawData.features);
+    const nRows = rawData.features[keys[0]].length;
+    const maxCols = keys.length;
+    const cellW = Math.min(12, (w - 120) / nRows);
+    const cellH = Math.min(30, (h - 60) / maxCols);
+    const padL = 80, padT = 30;
+
+    // Title
+    ctx.fillStyle = 'rgba(164,230,255,0.5)'; ctx.font = '10px "Space Grotesk"'; ctx.textAlign = 'left';
+    ctx.fillText('MISSING VALUES HEATMAP  (red = missing, green = present)', padL, 16);
+
+    for (let f = 0; f < maxCols; f++) {
+      const feat = rawData.features[keys[f]];
+      ctx.fillStyle = 'rgba(164,230,255,0.5)'; ctx.font = '10px "Space Grotesk"';
+      ctx.textAlign = 'right';
+      ctx.fillText(rawData.featureNames[f], padL - 8, padT + f * cellH + cellH / 2 + 3);
+
+      for (let i = 0; i < nRows; i++) {
+        const isMissing = feat[i] === null;
+        ctx.fillStyle = isMissing ? 'rgba(255,100,100,0.7)' : 'rgba(52,211,153,0.25)';
+        ctx.fillRect(padL + i * cellW, padT + f * cellH, cellW - 1, cellH - 1);
+      }
+    }
+
+    // Legend
+    const legendX = padL + nRows * cellW + 16;
+    ctx.fillStyle = 'rgba(255,100,100,0.7)'; ctx.fillRect(legendX, padT, 12, 12);
+    ctx.fillStyle = 'rgba(164,230,255,0.5)'; ctx.font = '9px "Space Grotesk"'; ctx.textAlign = 'left';
+    ctx.fillText('Missing', legendX + 16, padT + 10);
+    ctx.fillStyle = 'rgba(52,211,153,0.25)'; ctx.fillRect(legendX, padT + 20, 12, 12);
+    ctx.fillStyle = 'rgba(164,230,255,0.5)';
+    ctx.fillText('Present', legendX + 16, padT + 30);
+  }
+
   function updateExplanation() {
     const el = document.getElementById('pp-explanation'); if (!el) return;
     const s = computeStats(getFeat(selectedFeature));
     const iE = { mean: `<strong>Mean imputation</strong> replaces ${s.missing} missing values with the mean (${s.mean.toFixed(1)}). Preserves the average but may reduce variance.`, median: `<strong>Median imputation</strong> replaces ${s.missing} missing values with the median (${s.median.toFixed(1)}). More robust to outliers than mean.`, drop: `<strong>Dropping missing values</strong> removes ${s.missing} rows. Simplest approach but reduces dataset size.` };
-    const sE = { minmax: `<strong>Min-Max normalization</strong> scales all values to [0, 1]: x' = (x - min) / (max - min). Preserves distribution shape but is sensitive to outliers.`, zscore: `<strong>Z-score standardization</strong> transforms to mean=0, std=1: x' = (x - μ) / σ. Preferred for algorithms assuming normal distributions.`, none: `<strong>No scaling</strong> — features remain in original ranges. Distance-based algorithms will be dominated by high-magnitude features.` };
+    const sE = { minmax: `<strong>Min-Max normalization</strong> scales all values to [0, 1]: x' = (x - min) / (max - min). Preserves distribution shape but is sensitive to outliers.`, zscore: `<strong>Z-score standardization</strong> transforms to mean=0, std=1: x' = (x - μ) / σ. Preferred for algorithms assuming normal distributions.`, robust: `<strong>Robust scaling</strong> uses the median and IQR: x' = (x - median) / (Q3 - Q1). Resilient to outliers — ideal for real-world data with skewed distributions.`, none: `<strong>No scaling</strong> — features remain in original ranges. Distance-based algorithms will be dominated by high-magnitude features.` };
     el.innerHTML = `<p style="margin-bottom:var(--space-md)">${iE[imputeMethod]}</p><p style="margin-bottom:var(--space-md)">${sE[scaleMethod]}</p><p><strong>Why it matters:</strong> Preprocessing ensures all features contribute equally. Without scaling, Income (20k–100k) dominates Score (30–100) in distance-based algorithms.</p>`;
   }
 
   requestAnimationFrame(() => updateAll());
-  const rh = () => { updateHistograms(); updateScaling(); };
+  const rh = () => { updateHistograms(); updateScaling(); updateMissingHeatmap(); };
   window.addEventListener('resize', rh);
   return () => window.removeEventListener('resize', rh);
 }
